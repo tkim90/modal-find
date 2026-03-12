@@ -14,6 +14,7 @@ interface SearchRequest {
 	limit: number;
 	currentFile?: string;
 	caseSensitive: boolean;
+	regexEnabled: boolean;
 }
 
 interface RescanRequest {
@@ -103,14 +104,16 @@ export class FffProcess implements vscode.Disposable {
 		query: string,
 		limit: number,
 		currentFile: string | undefined,
-		caseSensitive: boolean
+		caseSensitive: boolean,
+		regexEnabled: boolean
 	): Promise<FffSearchResponse> {
 		const response = await this.request({
 			type: 'search',
 			query,
 			limit,
 			currentFile,
-			caseSensitive
+			caseSensitive,
+			regexEnabled
 		});
 		if (response.type !== 'results') {
 			throw new Error(`Unexpected search response: ${response.type}`);

@@ -4,9 +4,9 @@ import { SearchResponse, SearchResult } from './searchTypes';
 import { SearchService } from './searchService';
 
 type WebviewMessage =
-	| { type: 'ready'; query?: string; caseSensitive?: boolean }
+	| { type: 'ready'; query?: string; caseSensitive?: boolean; regexEnabled?: boolean }
 	| { type: 'close' }
-	| { type: 'queryChanged'; value: string; caseSensitive: boolean }
+	| { type: 'queryChanged'; value: string; caseSensitive: boolean; regexEnabled: boolean }
 	| { type: 'openResult'; resultId: string };
 
 interface SerializedSearchResult {
@@ -29,6 +29,7 @@ export class ModalFindPanel implements vscode.Disposable {
 	private requestVersion = 0;
 	private lastQuery = '';
 	private lastCaseSensitive = false;
+	private lastRegexEnabled = false;
 
 	public static createOrShow(extensionUri: vscode.Uri): void {
 		if (ModalFindPanel.currentPanel) {
@@ -61,7 +62,7 @@ export class ModalFindPanel implements vscode.Disposable {
 		this.disposables.push(
 			this.searchService,
 			this.searchService.onDidChange(() => {
-				void this.runSearch(this.lastQuery, this.lastCaseSensitive);
+				void this.runSearch(this.lastQuery, this.lastCaseSensitive, this.lastRegexEnabled);
 			}),
 			this.panel.onDidDispose(() => this.dispose()),
 			this.panel.webview.onDidReceiveMessage((message: WebviewMessage) => {
@@ -85,7 +86,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			case 'ready':
 				this.lastQuery = message.query ?? this.lastQuery;
 				this.lastCaseSensitive = message.caseSensitive ?? this.lastCaseSensitive;
-				await this.runSearch(this.lastQuery, this.lastCaseSensitive);
+				this.lastRegexEnabled = message.regexEnabled ?? this.lastRegexEnabled;
+				await this.runSearch(
+					this.lastQuery,
+					this.lastCaseSensitive,
+					this.lastRegexEnabled
+				);
 				return;
 			case 'close':
 				this.panel.dispose();
@@ -93,7 +99,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			case 'queryChanged':
 				this.lastQuery = message.value;
 				this.lastCaseSensitive = message.caseSensitive;
-				await this.runSearch(message.value, message.caseSensitive);
+				this.lastRegexEnabled = message.regexEnabled;
+				await this.runSearch(
+					message.value,
+					message.caseSensitive,
+					message.regexEnabled
+				);
 				return;
 			case 'openResult':
 				await this.openResult(message.resultId);
@@ -101,7 +112,11 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 	}
 
-	private async runSearch(query: string, caseSensitive = false): Promise<void> {
+	private async runSearch(
+		query: string,
+		caseSensitive = false,
+		regexEnabled = false
+	): Promise<void> {
 		const currentVersion = ++this.requestVersion;
 		this.postMessage({
 			type: 'searching',
@@ -109,7 +124,11 @@ export class ModalFindPanel implements vscode.Disposable {
 		});
 
 		try {
-			const response = await this.searchService.search(query, caseSensitive);
+			const response = await this.searchService.search(
+				query,
+				caseSensitive,
+				regexEnabled
+			);
 			if (currentVersion !== this.requestVersion) {
 				return;
 			}
@@ -461,9 +480,10 @@ export class ModalFindPanel implements vscode.Disposable {
 		<div class="modal">
 			<div class="header">
 				<div class="input-row">
-					<input id="query" class="query" type="text" spellcheck="false" placeholder="Search files and lines with fuzzy matching..." />
+					<input id="query" class="query" type="text" spellcheck="false" placeholder="Search files and lines..." />
 					<div class="input-actions">
 						<button id="case-toggle" class="toolbar-button" type="button" title="Match Case" aria-label="Match Case" aria-pressed="false">Cc</button>
+						<button id="regex-toggle" class="toolbar-button" type="button" title="Regex" aria-label="Regex" aria-pressed="false">.*</button>
 					</div>
 				</div>
 			</div>
@@ -483,11 +503,13 @@ export class ModalFindPanel implements vscode.Disposable {
 		const metaRoot = document.getElementById('meta');
 		const statusRoot = document.getElementById('status');
 		const caseToggle = document.getElementById('case-toggle');
+		const regexToggle = document.getElementById('regex-toggle');
 
 		let results = [];
 		let selectedIndex = 0;
 		let currentQuery = '';
 		let caseSensitive = false;
+		let regexEnabled = false;
 		let debounceTimer;
 
 		const savedState = vscode.getState();
@@ -497,6 +519,9 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 		if (savedState?.caseSensitive) {
 			caseSensitive = true;
+		}
+		if (savedState?.regexEnabled) {
+			regexEnabled = true;
 		}
 
 		function escapeHtml(value) {
@@ -509,7 +534,7 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 
 		function syncState() {
-			vscode.setState({ query: currentQuery, caseSensitive });
+			vscode.setState({ query: currentQuery, caseSensitive, regexEnabled });
 		}
 
 		function updateCaseToggle() {
@@ -517,10 +542,15 @@ export class ModalFindPanel implements vscode.Disposable {
 			caseToggle.setAttribute('aria-pressed', String(caseSensitive));
 		}
 
+		function updateRegexToggle() {
+			regexToggle.classList.toggle('is-active', regexEnabled);
+			regexToggle.setAttribute('aria-pressed', String(regexEnabled));
+		}
+
 		function postQuery(value) {
 			currentQuery = value;
 			syncState();
-			vscode.postMessage({ type: 'queryChanged', value, caseSensitive });
+			vscode.postMessage({ type: 'queryChanged', value, caseSensitive, regexEnabled });
 		}
 
 		function scheduleQuery(value) {
@@ -620,6 +650,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			postQuery(queryInput.value);
 		});
 
+		regexToggle.addEventListener('click', () => {
+			regexEnabled = !regexEnabled;
+			updateRegexToggle();
+			postQuery(queryInput.value);
+		});
+
 		queryInput.addEventListener('keydown', (event) => {
 			if (event.key === 'ArrowDown') {
 				event.preventDefault();
@@ -703,11 +739,17 @@ export class ModalFindPanel implements vscode.Disposable {
 		});
 
 		updateCaseToggle();
+		updateRegexToggle();
 		queryInput.focus();
 		queryInput.select();
 		renderAll();
 		syncState();
-		vscode.postMessage({ type: 'ready', query: currentQuery, caseSensitive });
+		vscode.postMessage({
+			type: 'ready',
+			query: currentQuery,
+			caseSensitive,
+			regexEnabled
+		});
 	</script>
 </body>
 </html>`;

@@ -47,6 +47,7 @@ export class SearchService implements vscode.Disposable {
 	public async search(
 		query: string,
 		caseSensitive = false,
+		regexEnabled = false,
 		resultLimit = DEFAULT_RESULT_LIMIT
 	): Promise<SearchResponse> {
 		if (!vscode.workspace.workspaceFolders?.length) {
@@ -61,7 +62,8 @@ export class SearchService implements vscode.Disposable {
 				query,
 				resultLimit,
 				getCurrentFilePath(),
-				caseSensitive
+				caseSensitive,
+				regexEnabled
 			);
 
 			if (response.isScanning) {

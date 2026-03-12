@@ -5,6 +5,7 @@ use fff_core::types::FileItem;
 use fff_core::{
     FFFMode, FuzzySearchOptions, PaginationArgs, QueryParser, SharedFrecency, SharedPicker,
 };
+use regex::bytes::{Regex as BytesRegex, RegexBuilder as BytesRegexBuilder};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
@@ -31,6 +32,8 @@ enum Request {
         current_file: Option<String>,
         #[serde(rename = "caseSensitive")]
         case_sensitive: bool,
+        #[serde(rename = "regexEnabled")]
+        regex_enabled: bool,
     },
     Rescan {
         id: u64,
@@ -142,6 +145,7 @@ impl App {
         limit: usize,
         current_file: Option<&str>,
         case_sensitive: bool,
+        regex_enabled: bool,
     ) -> Result<SearchPayload> {
         if self.roots.is_empty() {
             return Err(anyhow!("fff sidecar is not initialized"));
@@ -153,6 +157,7 @@ impl App {
         let mut fuzzy_file_candidates = Vec::new();
         let query_trimmed = query.trim();
         let path_like_query = is_path_like_query(query_trimmed);
+        let file_regex = build_file_regex(query, query_trimmed, case_sensitive, regex_enabled)?;
 
         for root in &self.roots {
             let picker_guard = root
@@ -169,11 +174,11 @@ impl App {
                 files.iter().filter(|file| is_searchable(file)).count();
             payload.is_scanning |= picker.is_scan_active();
 
-            literal_file_candidates.extend(collect_literal_file_candidates(
-                files,
-                query_trimmed,
-                case_sensitive,
-            ));
+            literal_file_candidates.extend(if let Some(file_regex) = file_regex.as_ref() {
+                collect_regex_file_candidates(files, file_regex)
+            } else {
+                collect_literal_file_candidates(files, query_trimmed, case_sensitive)
+            });
 
             if !query_trimmed.is_empty() {
                 let grep_query = parse_grep_query(query);
@@ -181,7 +186,7 @@ impl App {
                     files,
                     query,
                     grep_query.as_ref(),
-                    &grep_options(limit, case_sensitive),
+                    &grep_options(limit, case_sensitive, regex_enabled),
                 );
 
                 for grep_match in grep_results.matches {
@@ -204,6 +209,7 @@ impl App {
                 line_candidates.len(),
                 literal_file_candidates.len(),
                 case_sensitive,
+                regex_enabled,
             ) {
                 let parsed_query = QueryParser::default().parse(query);
                 let file_results = FilePicker::fuzzy_search(
@@ -355,11 +361,13 @@ fn run() -> Result<()> {
                 limit,
                 current_file,
                 case_sensitive,
+                regex_enabled,
             } => match app.search(
                 &query,
                 limit.max(1),
                 current_file.as_deref(),
                 case_sensitive,
+                regex_enabled,
             ) {
                 Ok(payload) => Response::Results {
                     id,
@@ -405,14 +413,14 @@ fn write_response(writer: &mut dyn Write, response: &Response) -> Result<()> {
     Ok(())
 }
 
-fn grep_options(limit: usize, case_sensitive: bool) -> GrepSearchOptions {
+fn grep_options(limit: usize, case_sensitive: bool, regex_enabled: bool) -> GrepSearchOptions {
     GrepSearchOptions {
         max_file_size: MAX_GREP_FILE_SIZE_BYTES,
         max_matches_per_file: MAX_LINE_MATCHES_PER_FILE,
         smart_case: !case_sensitive,
         file_offset: 0,
         page_limit: limit,
-        mode: grep_mode(),
+        mode: grep_mode(regex_enabled),
         time_budget_ms: GREP_TIME_BUDGET_MS,
         before_context: 0,
         after_context: 0,
@@ -420,8 +428,12 @@ fn grep_options(limit: usize, case_sensitive: bool) -> GrepSearchOptions {
     }
 }
 
-fn grep_mode() -> GrepMode {
-    GrepMode::PlainText
+fn grep_mode(regex_enabled: bool) -> GrepMode {
+    if regex_enabled {
+        GrepMode::Regex
+    } else {
+        GrepMode::PlainText
+    }
 }
 
 fn is_path_like_query(query: &str) -> bool {
@@ -442,11 +454,33 @@ fn should_use_fuzzy_file_fallback(
     line_candidate_count: usize,
     literal_file_candidate_count: usize,
     case_sensitive: bool,
+    regex_enabled: bool,
 ) -> bool {
     query.is_empty()
         || (!case_sensitive
+            && !regex_enabled
             && (path_like_query
                 || (line_candidate_count == 0 && literal_file_candidate_count == 0)))
+}
+
+fn build_file_regex(
+    query: &str,
+    query_trimmed: &str,
+    case_sensitive: bool,
+    regex_enabled: bool,
+) -> Result<Option<BytesRegex>> {
+    if !regex_enabled || query_trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let case_insensitive = !case_sensitive && !query.chars().any(|c| c.is_uppercase());
+    BytesRegexBuilder::new(query)
+        .case_insensitive(case_insensitive)
+        .multi_line(true)
+        .unicode(false)
+        .build()
+        .map(Some)
+        .map_err(|error| anyhow!("Invalid regex: {error}"))
 }
 
 fn collect_literal_file_candidates(
@@ -483,6 +517,39 @@ fn collect_literal_file_candidates(
         if filename_matches_query {
             filename_matches.push(candidate);
         } else if path_matches_query {
+            path_matches.push(candidate);
+        }
+    }
+
+    filename_matches.sort_by(|left, right| {
+        left.path
+            .len()
+            .cmp(&right.path.len())
+            .then(left.path.cmp(&right.path))
+    });
+    path_matches.sort_by(|left, right| {
+        left.path
+            .len()
+            .cmp(&right.path.len())
+            .then(left.path.cmp(&right.path))
+    });
+
+    filename_matches.extend(path_matches);
+    filename_matches
+}
+
+fn collect_regex_file_candidates(files: &[FileItem], query: &BytesRegex) -> Vec<FileCandidate> {
+    let mut filename_matches = Vec::new();
+    let mut path_matches = Vec::new();
+
+    for file in files {
+        let candidate = FileCandidate {
+            path: file.path.to_string_lossy().into_owned(),
+        };
+
+        if query.is_match(file.file_name.as_bytes()) {
+            filename_matches.push(candidate);
+        } else if query.is_match(file.relative_path.as_bytes()) {
             path_matches.push(candidate);
         }
     }
@@ -577,9 +644,9 @@ fn byte_column_to_utf16_column(line: &str, byte_column: usize) -> usize {
 #[cfg(test)]
 mod tests {
     use super::{
-        FileCandidate, LineCandidate, Request, Response, SearchHit,
-        collect_literal_file_candidates, is_path_like_query, order_results,
-        should_use_fuzzy_file_fallback,
+        FileCandidate, LineCandidate, Request, Response, SearchHit, build_file_regex,
+        collect_literal_file_candidates, collect_regex_file_candidates, is_path_like_query,
+        order_results, should_use_fuzzy_file_fallback,
     };
     use fff_core::types::FileItem;
     use std::path::PathBuf;
@@ -645,8 +712,21 @@ mod tests {
             0,
             0,
             true,
+            false,
         ));
-        assert!(should_use_fuzzy_file_fallback("", false, 0, 0, true));
+        assert!(should_use_fuzzy_file_fallback("", false, 0, 0, true, false));
+    }
+
+    #[test]
+    fn disables_fuzzy_file_fallback_when_regex_enabled() {
+        assert!(!should_use_fuzzy_file_fallback(
+            "test.*client",
+            false,
+            0,
+            0,
+            false,
+            true,
+        ));
     }
 
     #[test]
@@ -704,6 +784,37 @@ mod tests {
     }
 
     #[test]
+    fn regex_file_candidates_prefer_filename_matches() {
+        let files = vec![
+            FileItem::new_raw(
+                PathBuf::from("/tmp/src/deep/TestClientService.ts"),
+                "src/deep/TestClientService.ts".into(),
+                "TestClientService.ts".into(),
+                100,
+                0,
+                None,
+                false,
+            ),
+            FileItem::new_raw(
+                PathBuf::from("/tmp/src/features/client/index.ts"),
+                "src/features/client/index.ts".into(),
+                "index.ts".into(),
+                100,
+                0,
+                None,
+                false,
+            ),
+        ];
+
+        let regex = build_file_regex("TestClient.*", "TestClient.*", false, true)
+            .expect("regex should compile")
+            .expect("regex should be present");
+        let candidates = collect_regex_file_candidates(&files, &regex);
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].path, "/tmp/src/deep/TestClientService.ts");
+    }
+
+    #[test]
     fn serializes_results_in_camel_case() {
         let response = Response::Results {
             id: 1,
@@ -733,7 +844,7 @@ mod tests {
     #[test]
     fn parses_current_file_in_camel_case() {
         let request = serde_json::from_str::<Request>(
-            r#"{"id":1,"type":"search","query":"abc","limit":20,"currentFile":"/tmp/x.ts","caseSensitive":true}"#,
+            r#"{"id":1,"type":"search","query":"abc","limit":20,"currentFile":"/tmp/x.ts","caseSensitive":true,"regexEnabled":true}"#,
         )
         .expect("request should parse");
 
@@ -741,10 +852,12 @@ mod tests {
             Request::Search {
                 current_file,
                 case_sensitive,
+                regex_enabled,
                 ..
             } => {
                 assert_eq!(current_file.as_deref(), Some("/tmp/x.ts"));
                 assert!(case_sensitive);
+                assert!(regex_enabled);
             }
             other => panic!("unexpected request: {other:?}"),
         }
