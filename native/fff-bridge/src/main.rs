@@ -11,8 +11,8 @@ use std::io::{self, BufRead, Write};
 use std::sync::{Arc, RwLock};
 
 const MAX_GREP_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024;
-const MAX_LINE_MATCHES_PER_FILE: usize = 3;
-const GREP_TIME_BUDGET_MS: u64 = 75;
+const MAX_LINE_MATCHES_PER_FILE: usize = 100;
+const GREP_TIME_BUDGET_MS: u64 = 0;
 const DEFAULT_COMBO_BOOST_MULTIPLIER: i32 = 100;
 const DEFAULT_MIN_COMBO_COUNT: u32 = 3;
 
