@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { SearchResponse, SearchResult } from './searchTypes';
 import { SearchService } from './searchService';
@@ -12,8 +13,8 @@ interface SerializedSearchResult {
 	id: string;
 	kind: 'file' | 'line';
 	relativePath: string;
-	title: string;
-	subtitle: string;
+	displayText: string;
+	metaText: string;
 	lineNumber: number;
 	column: number;
 	preview: SearchResult['preview'];
@@ -132,8 +133,8 @@ export class ModalFindPanel implements vscode.Disposable {
 			id: result.id,
 			kind: result.kind,
 			relativePath: result.relativePath,
-			title: result.title,
-			subtitle: result.subtitle,
+			displayText: getDisplayText(result),
+			metaText: getMetaText(result),
 			lineNumber: result.lineNumber,
 			column: result.column,
 			preview: result.preview
@@ -291,7 +292,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			display: grid;
 			grid-template-columns: auto 1fr auto;
 			gap: 14px;
-			align-items: start;
+			align-items: center;
 			cursor: pointer;
 		}
 
@@ -311,31 +312,46 @@ export class ModalFindPanel implements vscode.Disposable {
 			text-transform: uppercase;
 			padding: 6px 8px;
 			border-radius: 0;
-			background: #222222;
-			color: #b8b8b8;
-			border: 1px solid #333333;
+			background: rgba(53, 53, 53, 0.55);
+			color: #cfcfcf;
+			border: 1px solid rgba(110, 110, 110, 0.35);
+		}
+
+		.badge.is-line {
+			background: rgba(34, 58, 94, 0.58);
+			color: #bfd6ff;
+			border-color: rgba(77, 117, 187, 0.4);
+		}
+
+		.badge.is-file {
+			background: rgba(34, 74, 52, 0.58);
+			color: #c7efd2;
+			border-color: rgba(89, 157, 115, 0.4);
+		}
+
+		.result-main {
+			min-width: 0;
 		}
 
 		.result-title {
 			font-size: 14px;
-			font-weight: 600;
+			font-weight: 500;
 			word-break: normal;
 			overflow-wrap: anywhere;
+			white-space: pre-wrap;
 		}
 
-		.result-subtitle {
-			margin-top: 4px;
-			font-size: 12px;
-			color: #9a9a9a;
-			white-space: nowrap;
-			overflow: hidden;
-			text-overflow: ellipsis;
+		.result-title.is-file {
+			color: #d9d9d9;
+			font-weight: 600;
 		}
 
 		.result-pos {
-			font-size: 11px;
-			color: #878787;
-			padding-top: 2px;
+			font-size: 12px;
+			color: #9d9d9d;
+			white-space: nowrap;
+			text-align: right;
+			align-self: center;
 		}
 
 		.preview {
@@ -469,15 +485,15 @@ export class ModalFindPanel implements vscode.Disposable {
 
 			resultsRoot.innerHTML = results.map((result, index) => {
 				const selectedClass = index === selectedIndex ? 'is-selected' : '';
-				const position = result.kind === 'line' ? result.lineNumber + ':' + result.column : 'file';
+				const badgeClass = result.kind === 'line' ? 'is-line' : 'is-file';
+				const titleClass = result.kind === 'line' ? 'is-line' : 'is-file';
 				return \`
 					<button class="result \${selectedClass}" data-result-id="\${escapeHtml(result.id)}" data-index="\${index}">
-						<div class="badge">\${escapeHtml(result.kind)}</div>
-						<div>
-							<div class="result-title">\${escapeHtml(result.title)}</div>
-							<div class="result-subtitle">\${escapeHtml(result.subtitle)}</div>
+						<div class="badge \${badgeClass}">\${escapeHtml(result.kind)}</div>
+						<div class="result-main">
+							<div class="result-title \${titleClass}">\${escapeHtml(result.displayText)}</div>
 						</div>
-						<div class="result-pos">\${escapeHtml(position)}</div>
+						<div class="result-pos">\${escapeHtml(result.metaText)}</div>
 					</button>
 				\`;
 			}).join('');
@@ -646,4 +662,21 @@ function getNonce(): string {
 		value += possible.charAt(Math.floor(Math.random() * possible.length));
 	}
 	return value;
+}
+
+function getDisplayText(result: SearchResult): string {
+	if (result.kind === 'line') {
+		return result.preview.find((line) => line.isMatch)?.text ?? '';
+	}
+
+	return result.relativePath;
+}
+
+function getMetaText(result: SearchResult): string {
+	const fileName = path.basename(result.relativePath);
+	if (result.kind === 'line') {
+		return `${fileName} ${result.lineNumber}`;
+	}
+
+	return fileName;
 }

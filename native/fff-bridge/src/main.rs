@@ -6,6 +6,7 @@ use fff_core::{
     FFFMode, FuzzySearchOptions, PaginationArgs, QueryParser, SharedFrecency, SharedPicker,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, RwLock};
 
@@ -144,8 +145,11 @@ impl App {
         }
 
         let mut payload = SearchPayload::default();
-        let mut file_candidates = Vec::new();
         let mut line_candidates = Vec::new();
+        let mut literal_file_candidates = Vec::new();
+        let mut fuzzy_file_candidates = Vec::new();
+        let query_trimmed = query.trim();
+        let path_like_query = is_path_like_query(query_trimmed);
 
         for root in &self.roots {
             let picker_guard = root
@@ -162,27 +166,9 @@ impl App {
                 files.iter().filter(|file| is_searchable(file)).count();
             payload.is_scanning |= picker.is_scan_active();
 
-            let parsed_query = QueryParser::default().parse(query);
-            let file_results = FilePicker::fuzzy_search(
-                files,
-                query,
-                parsed_query,
-                FuzzySearchOptions {
-                    max_threads: 0,
-                    current_file,
-                    project_path: Some(picker.base_path()),
-                    last_same_query_match: None,
-                    combo_boost_score_multiplier: DEFAULT_COMBO_BOOST_MULTIPLIER,
-                    min_combo_count: DEFAULT_MIN_COMBO_COUNT,
-                    pagination: PaginationArgs { offset: 0, limit },
-                },
-            );
+            literal_file_candidates.extend(collect_literal_file_candidates(files, query_trimmed));
 
-            file_candidates.extend(file_results.items.into_iter().map(|item| FileCandidate {
-                path: item.path.to_string_lossy().into_owned(),
-            }));
-
-            if !query.trim().is_empty() {
+            if !query_trimmed.is_empty() {
                 let grep_query = parse_grep_query(query);
                 let grep_results = grep_search(
                     files,
@@ -204,12 +190,48 @@ impl App {
                     });
                 }
             }
+
+            if should_use_fuzzy_file_fallback(
+                query_trimmed,
+                path_like_query,
+                line_candidates.len(),
+                literal_file_candidates.len(),
+            ) {
+                let parsed_query = QueryParser::default().parse(query);
+                let file_results = FilePicker::fuzzy_search(
+                    files,
+                    query,
+                    parsed_query,
+                    FuzzySearchOptions {
+                        max_threads: 0,
+                        current_file,
+                        project_path: Some(picker.base_path()),
+                        last_same_query_match: None,
+                        combo_boost_score_multiplier: DEFAULT_COMBO_BOOST_MULTIPLIER,
+                        min_combo_count: DEFAULT_MIN_COMBO_COUNT,
+                        pagination: PaginationArgs { offset: 0, limit },
+                    },
+                );
+
+                fuzzy_file_candidates.extend(file_results.items.into_iter().map(|item| {
+                    FileCandidate {
+                        path: item.path.to_string_lossy().into_owned(),
+                    }
+                }));
+            }
         }
 
         payload.skipped_file_count = payload
             .indexed_file_count
             .saturating_sub(payload.searchable_file_count);
-        payload.results = blend_results(file_candidates, line_candidates, limit);
+        payload.results = order_results(
+            query_trimmed,
+            path_like_query,
+            line_candidates,
+            literal_file_candidates,
+            fuzzy_file_candidates,
+            limit,
+        );
 
         Ok(payload)
     }
@@ -388,18 +410,91 @@ fn grep_mode() -> GrepMode {
     GrepMode::PlainText
 }
 
+fn is_path_like_query(query: &str) -> bool {
+    query.contains('/')
+        || query.contains('\\')
+        || query.contains('.')
+        || query.contains('_')
+        || query.contains('-')
+}
+
 fn is_searchable(file: &FileItem) -> bool {
     !file.is_binary && file.size <= MAX_GREP_FILE_SIZE_BYTES
 }
 
-fn blend_results(
-    file_candidates: Vec<FileCandidate>,
+fn should_use_fuzzy_file_fallback(
+    query: &str,
+    path_like_query: bool,
+    line_candidate_count: usize,
+    literal_file_candidate_count: usize,
+) -> bool {
+    query.is_empty()
+        || path_like_query
+        || (line_candidate_count == 0 && literal_file_candidate_count == 0)
+}
+
+fn collect_literal_file_candidates(files: &[FileItem], query: &str) -> Vec<FileCandidate> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+
+    let query_lower = query.to_lowercase();
+    let mut filename_matches = Vec::new();
+    let mut path_matches = Vec::new();
+
+    for file in files {
+        let candidate = FileCandidate {
+            path: file.path.to_string_lossy().into_owned(),
+        };
+
+        if file.file_name_lower.contains(&query_lower) {
+            filename_matches.push(candidate);
+        } else if file.relative_path_lower.contains(&query_lower) {
+            path_matches.push(candidate);
+        }
+    }
+
+    filename_matches.sort_by(|left, right| {
+        left.path
+            .len()
+            .cmp(&right.path.len())
+            .then(left.path.cmp(&right.path))
+    });
+    path_matches.sort_by(|left, right| {
+        left.path
+            .len()
+            .cmp(&right.path.len())
+            .then(left.path.cmp(&right.path))
+    });
+
+    filename_matches.extend(path_matches);
+    filename_matches
+}
+
+fn order_results(
+    query: &str,
+    path_like_query: bool,
     line_candidates: Vec<LineCandidate>,
+    literal_file_candidates: Vec<FileCandidate>,
+    fuzzy_file_candidates: Vec<FileCandidate>,
     limit: usize,
 ) -> Vec<SearchHit> {
     let mut merged = Vec::with_capacity(limit);
-    merged.extend(line_candidates.into_iter().map(MergedCandidate::Line));
-    merged.extend(file_candidates.into_iter().map(MergedCandidate::File));
+    let mut seen_file_paths = HashSet::new();
+
+    if query.is_empty() || path_like_query {
+        push_file_candidates(&mut merged, &mut seen_file_paths, literal_file_candidates);
+        push_file_candidates(&mut merged, &mut seen_file_paths, fuzzy_file_candidates);
+        if merged.is_empty() {
+            merged.extend(line_candidates.into_iter().map(MergedCandidate::Line));
+        }
+    } else {
+        merged.extend(line_candidates.into_iter().map(MergedCandidate::Line));
+        push_file_candidates(&mut merged, &mut seen_file_paths, literal_file_candidates);
+        if merged.is_empty() {
+            push_file_candidates(&mut merged, &mut seen_file_paths, fuzzy_file_candidates);
+        }
+    }
 
     let total = merged.len().max(1);
     merged
@@ -425,6 +520,18 @@ fn blend_results(
         .collect()
 }
 
+fn push_file_candidates(
+    merged: &mut Vec<MergedCandidate>,
+    seen_file_paths: &mut HashSet<String>,
+    candidates: Vec<FileCandidate>,
+) {
+    for candidate in candidates {
+        if seen_file_paths.insert(candidate.path.clone()) {
+            merged.push(MergedCandidate::File(candidate));
+        }
+    }
+}
+
 fn byte_column_to_utf16_column(line: &str, byte_column: usize) -> usize {
     let mut safe_boundary = byte_column.min(line.len());
     while safe_boundary > 0 && !line.is_char_boundary(safe_boundary) {
@@ -436,11 +543,24 @@ fn byte_column_to_utf16_column(line: &str, byte_column: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileCandidate, LineCandidate, Request, Response, SearchHit, blend_results};
+    use super::{
+        FileCandidate, LineCandidate, Request, Response, SearchHit,
+        collect_literal_file_candidates, is_path_like_query, order_results,
+    };
+    use fff_core::types::FileItem;
+    use std::path::PathBuf;
 
     #[test]
-    fn blends_line_results_before_file_results() {
-        let results = blend_results(
+    fn orders_line_results_before_file_results_for_symbol_queries() {
+        let results = order_results(
+            "TestClient",
+            false,
+            vec![LineCandidate {
+                path: "c.ts".into(),
+                line_number: 12,
+                column: 4,
+                line_text: "match".into(),
+            }],
             vec![
                 FileCandidate {
                     path: "a.ts".into(),
@@ -449,11 +569,8 @@ mod tests {
                     path: "b.ts".into(),
                 },
             ],
-            vec![LineCandidate {
-                path: "c.ts".into(),
-                line_number: 12,
-                column: 4,
-                line_text: "match".into(),
+            vec![FileCandidate {
+                path: "fuzzy.ts".into(),
             }],
             3,
         );
@@ -462,6 +579,63 @@ mod tests {
         assert!(matches!(results[0], super::SearchHit::Line { .. }));
         assert!(matches!(results[1], super::SearchHit::File { .. }));
         assert!(matches!(results[2], super::SearchHit::File { .. }));
+    }
+
+    #[test]
+    fn uses_fuzzy_file_fallback_only_when_no_better_results_exist() {
+        let results = order_results(
+            "TestClient",
+            false,
+            Vec::new(),
+            vec![FileCandidate {
+                path: "literal.ts".into(),
+            }],
+            vec![FileCandidate {
+                path: "fuzzy.ts".into(),
+            }],
+            5,
+        );
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            SearchHit::File { path, .. } => assert_eq!(path, "literal.ts"),
+            other => panic!("unexpected result: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn detects_path_like_queries() {
+        assert!(is_path_like_query("src/chat"));
+        assert!(is_path_like_query("ChatWindow.tsx"));
+        assert!(!is_path_like_query("TestClient"));
+    }
+
+    #[test]
+    fn literal_file_candidates_prefer_filename_matches() {
+        let files = vec![
+            FileItem::new_raw(
+                PathBuf::from("/tmp/src/deep/TestClientService.ts"),
+                "src/deep/TestClientService.ts".into(),
+                "TestClientService.ts".into(),
+                100,
+                0,
+                None,
+                false,
+            ),
+            FileItem::new_raw(
+                PathBuf::from("/tmp/src/features/client/index.ts"),
+                "src/features/client/index.ts".into(),
+                "index.ts".into(),
+                100,
+                0,
+                None,
+                false,
+            ),
+        ];
+
+        let candidates = collect_literal_file_candidates(&files, "testclient");
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].path, "/tmp/src/deep/TestClientService.ts");
     }
 
     #[test]
