@@ -4,9 +4,9 @@ import { SearchResponse, SearchResult } from './searchTypes';
 import { SearchService } from './searchService';
 
 type WebviewMessage =
-	| { type: 'ready' }
+	| { type: 'ready'; query?: string; caseSensitive?: boolean }
 	| { type: 'close' }
-	| { type: 'queryChanged'; value: string }
+	| { type: 'queryChanged'; value: string; caseSensitive: boolean }
 	| { type: 'openResult'; resultId: string };
 
 interface SerializedSearchResult {
@@ -28,6 +28,7 @@ export class ModalFindPanel implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private requestVersion = 0;
 	private lastQuery = '';
+	private lastCaseSensitive = false;
 
 	public static createOrShow(extensionUri: vscode.Uri): void {
 		if (ModalFindPanel.currentPanel) {
@@ -60,7 +61,7 @@ export class ModalFindPanel implements vscode.Disposable {
 		this.disposables.push(
 			this.searchService,
 			this.searchService.onDidChange(() => {
-				void this.runSearch(this.lastQuery);
+				void this.runSearch(this.lastQuery, this.lastCaseSensitive);
 			}),
 			this.panel.onDidDispose(() => this.dispose()),
 			this.panel.webview.onDidReceiveMessage((message: WebviewMessage) => {
@@ -82,14 +83,17 @@ export class ModalFindPanel implements vscode.Disposable {
 	private async handleMessage(message: WebviewMessage): Promise<void> {
 		switch (message.type) {
 			case 'ready':
-				await this.runSearch(this.lastQuery);
+				this.lastQuery = message.query ?? this.lastQuery;
+				this.lastCaseSensitive = message.caseSensitive ?? this.lastCaseSensitive;
+				await this.runSearch(this.lastQuery, this.lastCaseSensitive);
 				return;
 			case 'close':
 				this.panel.dispose();
 				return;
 			case 'queryChanged':
 				this.lastQuery = message.value;
-				await this.runSearch(message.value);
+				this.lastCaseSensitive = message.caseSensitive;
+				await this.runSearch(message.value, message.caseSensitive);
 				return;
 			case 'openResult':
 				await this.openResult(message.resultId);
@@ -97,7 +101,7 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 	}
 
-	private async runSearch(query: string): Promise<void> {
+	private async runSearch(query: string, caseSensitive = false): Promise<void> {
 		const currentVersion = ++this.requestVersion;
 		this.postMessage({
 			type: 'searching',
@@ -105,7 +109,7 @@ export class ModalFindPanel implements vscode.Disposable {
 		});
 
 		try {
-			const response = await this.searchService.search(query);
+			const response = await this.searchService.search(query, caseSensitive);
 			if (currentVersion !== this.requestVersion) {
 				return;
 			}
@@ -253,6 +257,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			align-items: center;
 		}
 
+		.input-actions {
+			display: flex;
+			align-items: center;
+			gap: 0;
+		}
+
 		.query {
 			width: 100%;
 			border: 1px solid #313131;
@@ -269,10 +279,35 @@ export class ModalFindPanel implements vscode.Disposable {
 			box-shadow: 0 0 0 1px var(--vscode-focusBorder);
 		}
 
-		.hint {
-			font-size: 12px;
-			color: #9a9a9a;
-			white-space: nowrap;
+		.toolbar-button {
+			width: 42px;
+			height: 42px;
+			border: 1px solid #3a3a3a;
+			border-radius: 0;
+			background: #111111;
+			color: #9f9f9f;
+			font-size: 13px;
+			font-weight: 600;
+			letter-spacing: 0.04em;
+			cursor: pointer;
+			transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+		}
+
+		.toolbar-button:hover {
+			background: #1b1b1b;
+			color: #d8d8d8;
+		}
+
+		.toolbar-button.is-active {
+			background: #202734;
+			border-color: #4b6a96;
+			color: #d7e7ff;
+		}
+
+		.toolbar-button:focus-visible {
+			outline: none;
+			box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+			border-color: var(--vscode-focusBorder);
 		}
 
 		.results {
@@ -427,7 +462,9 @@ export class ModalFindPanel implements vscode.Disposable {
 			<div class="header">
 				<div class="input-row">
 					<input id="query" class="query" type="text" spellcheck="false" placeholder="Search files and lines with fuzzy matching..." />
-					<div class="hint">Enter open · ↑↓ move · Esc close</div>
+					<div class="input-actions">
+						<button id="case-toggle" class="toolbar-button" type="button" title="Match Case" aria-label="Match Case" aria-pressed="false">Cc</button>
+					</div>
 				</div>
 			</div>
 			<div id="results" class="results"></div>
@@ -445,16 +482,21 @@ export class ModalFindPanel implements vscode.Disposable {
 		const previewRoot = document.getElementById('preview');
 		const metaRoot = document.getElementById('meta');
 		const statusRoot = document.getElementById('status');
+		const caseToggle = document.getElementById('case-toggle');
 
 		let results = [];
 		let selectedIndex = 0;
 		let currentQuery = '';
+		let caseSensitive = false;
 		let debounceTimer;
 
 		const savedState = vscode.getState();
 		if (savedState?.query) {
 			currentQuery = savedState.query;
 			queryInput.value = currentQuery;
+		}
+		if (savedState?.caseSensitive) {
+			caseSensitive = true;
 		}
 
 		function escapeHtml(value) {
@@ -466,10 +508,19 @@ export class ModalFindPanel implements vscode.Disposable {
 				.replaceAll("'", '&#39;');
 		}
 
+		function syncState() {
+			vscode.setState({ query: currentQuery, caseSensitive });
+		}
+
+		function updateCaseToggle() {
+			caseToggle.classList.toggle('is-active', caseSensitive);
+			caseToggle.setAttribute('aria-pressed', String(caseSensitive));
+		}
+
 		function postQuery(value) {
 			currentQuery = value;
-			vscode.setState({ query: value });
-			vscode.postMessage({ type: 'queryChanged', value });
+			syncState();
+			vscode.postMessage({ type: 'queryChanged', value, caseSensitive });
 		}
 
 		function scheduleQuery(value) {
@@ -563,6 +614,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			scheduleQuery(event.target.value);
 		});
 
+		caseToggle.addEventListener('click', () => {
+			caseSensitive = !caseSensitive;
+			updateCaseToggle();
+			postQuery(queryInput.value);
+		});
+
 		queryInput.addEventListener('keydown', (event) => {
 			if (event.key === 'ArrowDown') {
 				event.preventDefault();
@@ -645,10 +702,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			}
 		});
 
+		updateCaseToggle();
 		queryInput.focus();
 		queryInput.select();
 		renderAll();
-		vscode.postMessage({ type: 'ready' });
+		syncState();
+		vscode.postMessage({ type: 'ready', query: currentQuery, caseSensitive });
 	</script>
 </body>
 </html>`;

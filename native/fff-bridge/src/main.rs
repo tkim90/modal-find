@@ -29,6 +29,8 @@ enum Request {
         limit: usize,
         #[serde(rename = "currentFile")]
         current_file: Option<String>,
+        #[serde(rename = "caseSensitive")]
+        case_sensitive: bool,
     },
     Rescan {
         id: u64,
@@ -139,6 +141,7 @@ impl App {
         query: &str,
         limit: usize,
         current_file: Option<&str>,
+        case_sensitive: bool,
     ) -> Result<SearchPayload> {
         if self.roots.is_empty() {
             return Err(anyhow!("fff sidecar is not initialized"));
@@ -166,7 +169,11 @@ impl App {
                 files.iter().filter(|file| is_searchable(file)).count();
             payload.is_scanning |= picker.is_scan_active();
 
-            literal_file_candidates.extend(collect_literal_file_candidates(files, query_trimmed));
+            literal_file_candidates.extend(collect_literal_file_candidates(
+                files,
+                query_trimmed,
+                case_sensitive,
+            ));
 
             if !query_trimmed.is_empty() {
                 let grep_query = parse_grep_query(query);
@@ -174,7 +181,7 @@ impl App {
                     files,
                     query,
                     grep_query.as_ref(),
-                    &grep_options(query, limit),
+                    &grep_options(limit, case_sensitive),
                 );
 
                 for grep_match in grep_results.matches {
@@ -196,6 +203,7 @@ impl App {
                 path_like_query,
                 line_candidates.len(),
                 literal_file_candidates.len(),
+                case_sensitive,
             ) {
                 let parsed_query = QueryParser::default().parse(query);
                 let file_results = FilePicker::fuzzy_search(
@@ -346,7 +354,13 @@ fn run() -> Result<()> {
                 query,
                 limit,
                 current_file,
-            } => match app.search(&query, limit.max(1), current_file.as_deref()) {
+                case_sensitive,
+            } => match app.search(
+                &query,
+                limit.max(1),
+                current_file.as_deref(),
+                case_sensitive,
+            ) {
                 Ok(payload) => Response::Results {
                     id,
                     results: payload.results,
@@ -391,11 +405,11 @@ fn write_response(writer: &mut dyn Write, response: &Response) -> Result<()> {
     Ok(())
 }
 
-fn grep_options(_query: &str, limit: usize) -> GrepSearchOptions {
+fn grep_options(limit: usize, case_sensitive: bool) -> GrepSearchOptions {
     GrepSearchOptions {
         max_file_size: MAX_GREP_FILE_SIZE_BYTES,
         max_matches_per_file: MAX_LINE_MATCHES_PER_FILE,
-        smart_case: true,
+        smart_case: !case_sensitive,
         file_offset: 0,
         page_limit: limit,
         mode: grep_mode(),
@@ -427,18 +441,24 @@ fn should_use_fuzzy_file_fallback(
     path_like_query: bool,
     line_candidate_count: usize,
     literal_file_candidate_count: usize,
+    case_sensitive: bool,
 ) -> bool {
     query.is_empty()
-        || path_like_query
-        || (line_candidate_count == 0 && literal_file_candidate_count == 0)
+        || (!case_sensitive
+            && (path_like_query
+                || (line_candidate_count == 0 && literal_file_candidate_count == 0)))
 }
 
-fn collect_literal_file_candidates(files: &[FileItem], query: &str) -> Vec<FileCandidate> {
+fn collect_literal_file_candidates(
+    files: &[FileItem],
+    query: &str,
+    case_sensitive: bool,
+) -> Vec<FileCandidate> {
     if query.is_empty() {
         return Vec::new();
     }
 
-    let query_lower = query.to_lowercase();
+    let query_lower = (!case_sensitive).then(|| query.to_lowercase());
     let mut filename_matches = Vec::new();
     let mut path_matches = Vec::new();
 
@@ -447,9 +467,22 @@ fn collect_literal_file_candidates(files: &[FileItem], query: &str) -> Vec<FileC
             path: file.path.to_string_lossy().into_owned(),
         };
 
-        if file.file_name_lower.contains(&query_lower) {
+        let filename_matches_query = if case_sensitive {
+            file.file_name.contains(query)
+        } else {
+            file.file_name_lower
+                .contains(query_lower.as_deref().unwrap_or_default())
+        };
+        let path_matches_query = if case_sensitive {
+            file.relative_path.contains(query)
+        } else {
+            file.relative_path_lower
+                .contains(query_lower.as_deref().unwrap_or_default())
+        };
+
+        if filename_matches_query {
             filename_matches.push(candidate);
-        } else if file.relative_path_lower.contains(&query_lower) {
+        } else if path_matches_query {
             path_matches.push(candidate);
         }
     }
@@ -546,6 +579,7 @@ mod tests {
     use super::{
         FileCandidate, LineCandidate, Request, Response, SearchHit,
         collect_literal_file_candidates, is_path_like_query, order_results,
+        should_use_fuzzy_file_fallback,
     };
     use fff_core::types::FileItem;
     use std::path::PathBuf;
@@ -604,6 +638,18 @@ mod tests {
     }
 
     #[test]
+    fn disables_fuzzy_file_fallback_when_case_sensitive() {
+        assert!(!should_use_fuzzy_file_fallback(
+            "TestClient",
+            true,
+            0,
+            0,
+            true,
+        ));
+        assert!(should_use_fuzzy_file_fallback("", false, 0, 0, true));
+    }
+
+    #[test]
     fn detects_path_like_queries() {
         assert!(is_path_like_query("src/chat"));
         assert!(is_path_like_query("ChatWindow.tsx"));
@@ -633,9 +679,28 @@ mod tests {
             ),
         ];
 
-        let candidates = collect_literal_file_candidates(&files, "testclient");
+        let candidates = collect_literal_file_candidates(&files, "testclient", false);
         assert_eq!(candidates.len(), 1);
         assert_eq!(candidates[0].path, "/tmp/src/deep/TestClientService.ts");
+    }
+
+    #[test]
+    fn case_sensitive_literal_file_candidates_require_exact_case() {
+        let files = vec![FileItem::new_raw(
+            PathBuf::from("/tmp/src/deep/TestClientService.ts"),
+            "src/deep/TestClientService.ts".into(),
+            "TestClientService.ts".into(),
+            100,
+            0,
+            None,
+            false,
+        )];
+
+        assert!(collect_literal_file_candidates(&files, "testclient", true).is_empty());
+        assert_eq!(
+            collect_literal_file_candidates(&files, "TestClient", true).len(),
+            1
+        );
     }
 
     #[test]
@@ -668,13 +733,18 @@ mod tests {
     #[test]
     fn parses_current_file_in_camel_case() {
         let request = serde_json::from_str::<Request>(
-            r#"{"id":1,"type":"search","query":"abc","limit":20,"currentFile":"/tmp/x.ts"}"#,
+            r#"{"id":1,"type":"search","query":"abc","limit":20,"currentFile":"/tmp/x.ts","caseSensitive":true}"#,
         )
         .expect("request should parse");
 
         match request {
-            Request::Search { current_file, .. } => {
+            Request::Search {
+                current_file,
+                case_sensitive,
+                ..
+            } => {
                 assert_eq!(current_file.as_deref(), Some("/tmp/x.ts"));
+                assert!(case_sensitive);
             }
             other => panic!("unexpected request: {other:?}"),
         }

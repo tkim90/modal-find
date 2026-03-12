@@ -44,7 +44,11 @@ export class SearchService implements vscode.Disposable {
 		}
 	}
 
-	public async search(query: string, resultLimit = DEFAULT_RESULT_LIMIT): Promise<SearchResponse> {
+	public async search(
+		query: string,
+		caseSensitive = false,
+		resultLimit = DEFAULT_RESULT_LIMIT
+	): Promise<SearchResponse> {
 		if (!vscode.workspace.workspaceFolders?.length) {
 			throw new Error('Open a folder or workspace before using Modal Find.');
 		}
@@ -56,7 +60,8 @@ export class SearchService implements vscode.Disposable {
 			const response = await (await this.ensureSidecar()).search(
 				query,
 				resultLimit,
-				getCurrentFilePath()
+				getCurrentFilePath(),
+				caseSensitive
 			);
 
 			if (response.isScanning) {
