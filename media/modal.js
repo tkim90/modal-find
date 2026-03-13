@@ -38,6 +38,50 @@
 			.replaceAll("'", '&#39;');
 	}
 
+	function truncate(text, limit) {
+		if (text.length <= limit) {
+			return text;
+		}
+		return text.slice(0, limit) + '\u2026';
+	}
+
+	function highlightText(text) {
+		if (!currentQuery) {
+			return escapeHtml(text);
+		}
+
+		let pattern;
+		try {
+			const source = regexEnabled
+				? currentQuery
+				: currentQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const flags = caseSensitive ? 'g' : 'gi';
+			pattern = new RegExp(source, flags);
+		} catch {
+			return escapeHtml(text);
+		}
+
+		const parts = [];
+		let lastIndex = 0;
+		let match;
+		while ((match = pattern.exec(text)) !== null) {
+			if (match[0].length === 0) {
+				pattern.lastIndex++;
+				continue;
+			}
+			if (match.index > lastIndex) {
+				parts.push(escapeHtml(text.slice(lastIndex, match.index)));
+			}
+			parts.push('<mark>' + escapeHtml(match[0]) + '</mark>');
+			lastIndex = pattern.lastIndex;
+		}
+		if (lastIndex < text.length) {
+			parts.push(escapeHtml(text.slice(lastIndex)));
+		}
+
+		return parts.length ? parts.join('') : escapeHtml(text);
+	}
+
 	function syncState() {
 		vscode.setState({ query: currentQuery, caseSensitive, regexEnabled });
 	}
@@ -77,7 +121,7 @@
 				<button class="result ${selectedClass}" data-result-id="${escapeHtml(result.id)}" data-index="${index}">
 					<div class="badge ${badgeClass}">${escapeHtml(result.kind)}</div>
 					<div class="result-main">
-						<div class="result-title ${titleClass}">${escapeHtml(result.displayText)}</div>
+						<div class="result-title ${titleClass}">${highlightText(truncate(result.displayText, 120))}</div>
 					</div>
 					<div class="result-pos">${escapeHtml(result.metaText)}</div>
 				</button>
@@ -95,7 +139,7 @@
 		const previewLines = selected.preview.map((line) => `
 			<div class="code-line ${line.isMatch ? 'is-match' : ''}">
 				<div class="line-number">${line.lineNumber}</div>
-				<div>${escapeHtml(line.text || ' ')}</div>
+				<div>${line.isMatch ? highlightText(line.text || ' ') : escapeHtml(line.text || ' ')}</div>
 			</div>
 		`).join('');
 

@@ -170,14 +170,13 @@ body {
 .result-title {
 	font-size: 14px;
 	font-weight: 500;
-	word-break: normal;
-	overflow-wrap: anywhere;
-	white-space: pre-wrap;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .result-title.is-file {
 	color: #d9d9d9;
-	font-weight: 600;
 }
 
 .result-pos {
@@ -242,6 +241,13 @@ body {
 	color: #8d8d8d;
 	font-size: 12px;
 	background: #171717;
+}
+
+mark {
+	background: rgba(180, 150, 30, 0.45);
+	color: inherit;
+	border-radius: 2px;
+	padding: 0 1px;
 }
 
 .empty {
