@@ -8,7 +8,8 @@
       "Read(//opt/homebrew/Cellar/node/25.2.1/bin/**)",
       "Read(//Users/taekim/.nvm/versions/node/**)",
       "Bash(/Users/taekim/.nvm/versions/node/v25.3.0/bin/npx tsc:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "mcp__filesystem__read_text_file"
     ]
   }
 }

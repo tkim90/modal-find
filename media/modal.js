@@ -21,6 +21,9 @@
 	let modalWidth = 0;
 	let modalHeight = 0;
 	let splitRatio = 0;
+	let lastRenderedResults = null;
+	let pendingPreviewRaf = 0;
+	let pendingHighlightTimer = 0;
 
 	const savedState = vscode.getState();
 	if (savedState?.query) {
@@ -194,6 +197,7 @@
 	function renderResults() {
 		if (!results.length) {
 			resultsRoot.innerHTML = '<div class="empty">No matches yet.<br />Try a shorter query or fewer terms.</div>';
+			lastRenderedResults = results;
 			return;
 		}
 
@@ -217,20 +221,26 @@
 		}).join('');
 
 		resultsRoot.querySelectorAll('.result-title').forEach(addSearchMarks);
+		lastRenderedResults = results;
 	}
 
 	function renderPreview() {
+		if (pendingHighlightTimer) {
+			clearTimeout(pendingHighlightTimer);
+			pendingHighlightTimer = 0;
+		}
+
 		const selected = results[selectedIndex];
 		if (!selected) {
 			previewRoot.innerHTML = '<div class="empty">Preview will appear here.</div>';
 			return;
 		}
 
-		const language = detectLanguage(selected.relativePath);
+		// Phase 1: fast render with plain text (no syntax highlighting)
 		const previewLines = selected.preview.map((line) => `
 			<div class="code-line ${line.isMatch ? 'is-match' : ''}">
 				<div class="line-number">${line.lineNumber}</div>
-				<div class="code-text">${syntaxHighlight(line.text || ' ', language)}</div>
+				<div class="code-text">${escapeHtml(line.text || ' ')}</div>
 			</div>
 		`).join('');
 
@@ -242,17 +252,81 @@
 			<div class="code">${previewLines}</div>
 		`;
 
-		previewRoot.querySelectorAll('.code-line.is-match > .code-text').forEach(addSearchMarks);
-
 		const matchLine = previewRoot.querySelector('.code-line.is-match');
 		if (matchLine) {
-			matchLine.scrollIntoView({ block: 'center' });
+			scrollWithin(previewRoot, matchLine, 'center');
 		}
+
+		// Phase 2: deferred syntax highlighting + search marks after settling
+		const snapshot = selectedIndex;
+		pendingHighlightTimer = setTimeout(() => {
+			pendingHighlightTimer = 0;
+			if (selectedIndex !== snapshot) {
+				return;
+			}
+			const language = detectLanguage(selected.relativePath);
+			if (language) {
+				previewRoot.querySelectorAll('.code-text').forEach((el) => {
+					el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
+				});
+			}
+			previewRoot.querySelectorAll('.code-line.is-match > .code-text').forEach(addSearchMarks);
+		}, 100);
 	}
 
 	function renderAll() {
+		if (pendingPreviewRaf) {
+			cancelAnimationFrame(pendingPreviewRaf);
+			pendingPreviewRaf = 0;
+		}
+		if (pendingHighlightTimer) {
+			clearTimeout(pendingHighlightTimer);
+			pendingHighlightTimer = 0;
+		}
 		renderResults();
 		renderPreview();
+	}
+
+	function scrollWithin(container, element, mode) {
+		const eTop = element.offsetTop;
+		const eHeight = element.offsetHeight;
+		const cTop = container.scrollTop;
+		const cHeight = container.clientHeight;
+
+		if (mode === 'center') {
+			container.scrollTop = eTop - (cHeight / 2) + (eHeight / 2);
+		} else {
+			// nearest
+			if (eTop < cTop) {
+				container.scrollTop = eTop;
+			} else if (eTop + eHeight > cTop + cHeight) {
+				container.scrollTop = eTop + eHeight - cHeight;
+			}
+		}
+	}
+
+	function updateSelectionClass(oldIndex, newIndex) {
+		if (oldIndex === newIndex) {
+			return;
+		}
+		const oldEl = resultsRoot.querySelector('[data-index="' + oldIndex + '"]');
+		const newEl = resultsRoot.querySelector('[data-index="' + newIndex + '"]');
+		if (oldEl) {
+			oldEl.classList.remove('is-selected');
+		}
+		if (newEl) {
+			newEl.classList.add('is-selected');
+		}
+	}
+
+	function schedulePreviewUpdate() {
+		if (pendingPreviewRaf) {
+			return;
+		}
+		pendingPreviewRaf = requestAnimationFrame(() => {
+			pendingPreviewRaf = 0;
+			renderPreview();
+		});
 	}
 
 	function selectIndex(index, { focus = false } = {}) {
@@ -262,11 +336,20 @@
 			return;
 		}
 
+		const prevIndex = selectedIndex;
 		selectedIndex = Math.max(0, Math.min(index, results.length - 1));
-		renderAll();
+
+		if (lastRenderedResults === results) {
+			updateSelectionClass(prevIndex, selectedIndex);
+			schedulePreviewUpdate();
+		} else {
+			renderAll();
+		}
 
 		const selectedElement = resultsRoot.querySelector('[data-index="' + selectedIndex + '"]');
-		selectedElement?.scrollIntoView({ block: 'nearest' });
+		if (selectedElement) {
+			scrollWithin(resultsRoot, selectedElement, 'nearest');
+		}
 		if (focus) {
 			selectedElement?.focus();
 		}

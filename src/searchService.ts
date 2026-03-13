@@ -3,8 +3,7 @@ import { FffProcess, FffSearchResult } from './fffProcess';
 import { SearchResponse, SearchResult, SearchResultPreview } from './searchTypes';
 
 const DEFAULT_RESULT_LIMIT = 80;
-const FILE_PREVIEW_LINE_COUNT = 7;
-const PREVIEW_CONTEXT_RADIUS = 3;
+const PREVIEW_MAX_LINES = 100;
 const MAX_PREVIEW_FILE_SIZE_BYTES = 1024 * 1024;
 const RESCAN_DEBOUNCE_MS = 250;
 const SCAN_REFRESH_DELAY_MS = 350;
@@ -68,8 +67,6 @@ export class SearchService implements vscode.Disposable {
 		this.lastQuery = query;
 
 		try {
-			console.log(`[search] ${query}`)
-			console.log(`await this.ensureSidecar ${(await this.ensureSidecar())}`)
 			const response = await (await this.ensureSidecar()).search(
 				query,
 				resultLimit,
@@ -77,8 +74,6 @@ export class SearchService implements vscode.Disposable {
 				caseSensitive,
 				regexEnabled
 			);
-			console.log(`[search][response] ${query} -- ${response}`)
-			console.log(JSON.stringify(response, null, 2))
 
 			if (this.disposed) {
 				throw new Error('Search service is disposed.');
@@ -274,7 +269,8 @@ async function buildFilePreview(uri: vscode.Uri, previewCache: PreviewCache): Pr
 		];
 	}
 
-	return lines.map((text, index) => ({
+	const end = Math.min(lines.length, PREVIEW_MAX_LINES);
+	return lines.slice(0, end).map((text, index) => ({
 		lineNumber: index + 1,
 		text,
 		isMatch: false
@@ -294,10 +290,30 @@ async function buildLinePreview(
 
 	const matchLineIndex = Math.min(Math.max(0, lineNumber - 1), lines.length - 1);
 
-	return lines.map((text, index) => ({
-		lineNumber: index + 1,
+	if (lines.length <= PREVIEW_MAX_LINES) {
+		return lines.map((text, index) => ({
+			lineNumber: index + 1,
+			text,
+			isMatch: index === matchLineIndex
+		}));
+	}
+
+	// Window around the match line
+	const half = Math.floor(PREVIEW_MAX_LINES / 2);
+	let start = matchLineIndex - half;
+	let end = matchLineIndex + half;
+	if (start < 0) {
+		end = Math.min(lines.length, end - start);
+		start = 0;
+	} else if (end > lines.length) {
+		start = Math.max(0, start - (end - lines.length));
+		end = lines.length;
+	}
+
+	return lines.slice(start, end).map((text, index) => ({
+		lineNumber: start + index + 1,
 		text,
-		isMatch: index === matchLineIndex
+		isMatch: start + index === matchLineIndex
 	}));
 }
 
