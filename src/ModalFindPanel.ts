@@ -26,6 +26,7 @@ export class ModalFindPanel implements vscode.Disposable {
 	private readonly searchService: SearchService;
 	private readonly resultMap = new Map<string, SearchResult>();
 	private readonly disposables: vscode.Disposable[] = [];
+	private disposed = false;
 	private requestVersion = 0;
 	private lastQuery = '';
 	private lastCaseSensitive = false;
@@ -54,24 +55,42 @@ export class ModalFindPanel implements vscode.Disposable {
 		ModalFindPanel.currentPanel = new ModalFindPanel(panel, extensionUri);
 	}
 
+	public static disposeCurrentPanel(): void {
+		ModalFindPanel.currentPanel?.panel.dispose();
+	}
+
 	private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
 		this.panel = panel;
 		this.searchService = new SearchService(extensionUri);
-		this.panel.webview.html = this.getHtmlForWebview(extensionUri, this.panel.webview);
 
 		this.disposables.push(
 			this.searchService,
 			this.searchService.onDidChange(() => {
+				if (this.disposed) {
+					return;
+				}
 				void this.runSearch(this.lastQuery, this.lastCaseSensitive, this.lastRegexEnabled);
 			}),
 			this.panel.onDidDispose(() => this.dispose()),
 			this.panel.webview.onDidReceiveMessage((message: WebviewMessage) => {
+				if (this.disposed) {
+					return;
+				}
 				void this.handleMessage(message);
 			})
 		);
+
+		this.panel.webview.html = this.getHtmlForWebview(extensionUri, this.panel.webview);
 	}
 
 	public dispose(): void {
+		if (this.disposed) {
+			return;
+		}
+
+		this.disposed = true;
+		this.requestVersion += 1;
+
 		if (ModalFindPanel.currentPanel === this) {
 			ModalFindPanel.currentPanel = undefined;
 		}
@@ -82,6 +101,10 @@ export class ModalFindPanel implements vscode.Disposable {
 	}
 
 	private async handleMessage(message: WebviewMessage): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+
 		switch (message.type) {
 			case 'ready':
 				this.lastQuery = message.query ?? this.lastQuery;
@@ -117,6 +140,10 @@ export class ModalFindPanel implements vscode.Disposable {
 		caseSensitive = false,
 		regexEnabled = false
 	): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+
 		const currentVersion = ++this.requestVersion;
 		this.postMessage({
 			type: 'searching',
@@ -129,13 +156,13 @@ export class ModalFindPanel implements vscode.Disposable {
 				caseSensitive,
 				regexEnabled
 			);
-			if (currentVersion !== this.requestVersion) {
+			if (this.disposed || currentVersion !== this.requestVersion) {
 				return;
 			}
 
 			this.updateResults(response);
 		} catch (error) {
-			if (currentVersion !== this.requestVersion) {
+			if (this.disposed || currentVersion !== this.requestVersion) {
 				return;
 			}
 
@@ -147,6 +174,10 @@ export class ModalFindPanel implements vscode.Disposable {
 	}
 
 	private updateResults(response: SearchResponse): void {
+		if (this.disposed) {
+			return;
+		}
+
 		this.resultMap.clear();
 		for (const result of response.results) {
 			this.resultMap.set(result.id, result);
@@ -177,6 +208,10 @@ export class ModalFindPanel implements vscode.Disposable {
 	}
 
 	private async openResult(resultId: string): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+
 		const result = this.resultMap.get(resultId);
 		if (!result) {
 			return;
@@ -203,11 +238,19 @@ export class ModalFindPanel implements vscode.Disposable {
 	}
 
 	private focusQuery(): void {
+		if (this.disposed) {
+			return;
+		}
+
 		this.postMessage({ type: 'focusQuery' });
 	}
 
 	private postMessage(message: unknown): void {
-		void this.panel.webview.postMessage(message);
+		if (this.disposed) {
+			return;
+		}
+
+		void this.panel.webview.postMessage(message).then(undefined, () => undefined);
 	}
 
 	private getHtmlForWebview(extensionUri: vscode.Uri, webview: vscode.Webview): string {
@@ -341,7 +384,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			border-radius: 0;
 			background: transparent;
 			color: inherit;
-			padding: 14px 16px;
+			padding: 2px 2px;
 			text-align: left;
 			display: grid;
 			grid-template-columns: auto 1fr auto;
@@ -640,8 +683,8 @@ export class ModalFindPanel implements vscode.Disposable {
 			vscode.postMessage({ type: 'openResult', resultId: selected.id });
 		}
 
-		queryInput.addEventListener('input', (event) => {
-			scheduleQuery(event.target.value);
+		queryInput.addEventListener('input', () => {
+			scheduleQuery(queryInput.value);
 		});
 
 		caseToggle.addEventListener('click', () => {

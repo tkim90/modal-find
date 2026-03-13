@@ -143,6 +143,7 @@ export class FffProcess implements vscode.Disposable {
 		this.disposed = true;
 		const process = this.process;
 		this.process = undefined;
+		this.reader?.removeAllListeners();
 		this.reader?.close();
 		this.reader = undefined;
 		this.rejectPending(new Error('Native fff sidecar stopped.'));
@@ -150,6 +151,10 @@ export class FffProcess implements vscode.Disposable {
 		if (!process) {
 			return;
 		}
+
+		process.removeAllListeners('error');
+		process.removeAllListeners('exit');
+		process.stderr.removeAllListeners('data');
 
 		try {
 			if (process.stdin.writable) {
@@ -223,10 +228,18 @@ export class FffProcess implements vscode.Disposable {
 		});
 
 		this.reader.on('line', (line) => {
+			if (this.disposed) {
+				return;
+			}
+
 			this.handleLine(line);
 		});
 
 		process.stderr.on('data', (chunk: Buffer | string) => {
+			if (this.disposed) {
+				return;
+			}
+
 			const text = typeof chunk === 'string' ? chunk : chunk.toString('utf8');
 			const message = text.trim();
 			if (message) {
@@ -249,6 +262,10 @@ export class FffProcess implements vscode.Disposable {
 	}
 
 	private handleLine(line: string): void {
+		if (this.disposed) {
+			return;
+		}
+
 		let response: FffResponse;
 		try {
 			response = JSON.parse(line) as FffResponse;
@@ -285,6 +302,10 @@ export class FffProcess implements vscode.Disposable {
 	}
 
 	private handleProcessExit(error: Error): void {
+		if (this.disposed) {
+			return;
+		}
+
 		this.stopCurrentProcess();
 		this.rejectPending(error);
 	}
@@ -293,6 +314,7 @@ export class FffProcess implements vscode.Disposable {
 		const process = this.process;
 		this.process = undefined;
 
+		this.reader?.removeAllListeners();
 		this.reader?.close();
 		this.reader = undefined;
 

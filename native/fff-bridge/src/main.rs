@@ -303,23 +303,30 @@ impl RootState {
 }
 
 fn main() {
+    debug_log("main: starting");
     if let Err(error) = run() {
+        debug_log(&format!("main: exiting with error: {error:#}"));
         eprintln!("{error:#}");
         std::process::exit(1);
     }
+    debug_log("main: clean exit");
 }
 
 fn run() -> Result<()> {
+    debug_log("run: entered");
     let stdin = io::stdin();
     let stdout = io::stdout();
     let mut output = stdout.lock();
     let mut app = App::default();
+    debug_log("run: stdio locked");
 
     for line in stdin.lock().lines() {
+        debug_log("run: waiting for next line completed");
         let line = match line {
             Ok(line) if !line.trim().is_empty() => line,
             Ok(_) => continue,
             Err(error) => {
+                debug_log(&format!("run: failed to read request: {error}"));
                 write_response(
                     &mut output,
                     &Response::Error {
@@ -330,10 +337,12 @@ fn run() -> Result<()> {
                 continue;
             }
         };
+        debug_log(&format!("run: received raw line: {line}"));
 
         let request = match serde_json::from_str::<Request>(&line) {
             Ok(request) => request,
             Err(error) => {
+                debug_log(&format!("run: failed to parse request: {error}"));
                 write_response(
                     &mut output,
                     &Response::Error {
@@ -344,17 +353,21 @@ fn run() -> Result<()> {
                 continue;
             }
         };
+        debug_log(&format!("run: parsed request type: {}", request_type(&request)));
 
         let shutdown_after_response = matches!(request, Request::Shutdown { .. });
 
         let response = match request {
-            Request::Init { id, roots } => match app.initialize(roots) {
+            Request::Init { id, roots } => {
+                debug_log(&format!("run: handling init id={id} roots={}", roots.len()));
+                match app.initialize(roots) {
                 Ok(()) => Response::Ready { id },
                 Err(error) => Response::Error {
                     id: Some(id),
                     message: error.to_string(),
                 },
-            },
+                }
+            }
             Request::Search {
                 id,
                 query,
@@ -362,46 +375,58 @@ fn run() -> Result<()> {
                 current_file,
                 case_sensitive,
                 regex_enabled,
-            } => match app.search(
-                &query,
-                limit.max(1),
-                current_file.as_deref(),
-                case_sensitive,
-                regex_enabled,
-            ) {
-                Ok(payload) => Response::Results {
-                    id,
-                    results: payload.results,
-                    indexed_file_count: payload.indexed_file_count,
-                    searchable_file_count: payload.searchable_file_count,
-                    skipped_file_count: payload.skipped_file_count,
-                    is_scanning: payload.is_scanning,
-                },
-                Err(error) => Response::Error {
-                    id: Some(id),
-                    message: error.to_string(),
-                },
-            },
-            Request::Rescan { id } => match app.rescan() {
+            } => {
+                debug_log(&format!(
+                    "run: handling search id={id} query={query:?} limit={limit} case_sensitive={case_sensitive} regex_enabled={regex_enabled}"
+                ));
+                match app.search(
+                    &query,
+                    limit.max(1),
+                    current_file.as_deref(),
+                    case_sensitive,
+                    regex_enabled,
+                ) {
+                    Ok(payload) => Response::Results {
+                        id,
+                        results: payload.results,
+                        indexed_file_count: payload.indexed_file_count,
+                        searchable_file_count: payload.searchable_file_count,
+                        skipped_file_count: payload.skipped_file_count,
+                        is_scanning: payload.is_scanning,
+                    },
+                    Err(error) => Response::Error {
+                        id: Some(id),
+                        message: error.to_string(),
+                    },
+                }
+            }
+            Request::Rescan { id } => {
+                debug_log(&format!("run: handling rescan id={id}"));
+                match app.rescan() {
                 Ok(()) => Response::Ack { id },
                 Err(error) => Response::Error {
                     id: Some(id),
                     message: error.to_string(),
                 },
-            },
+                }
+            }
             Request::Shutdown { id } => {
+                debug_log(&format!("run: handling shutdown id={id}"));
                 app.shutdown();
                 Response::Ack { id }
             }
         };
 
+        debug_log(&format!("run: writing response type={}", response_type(&response)));
         write_response(&mut output, &response)?;
 
         if shutdown_after_response {
+            debug_log("run: shutdown requested, breaking loop");
             break;
         }
     }
 
+    debug_log("run: input loop ended, shutting down app");
     app.shutdown();
     Ok(())
 }
@@ -411,6 +436,30 @@ fn write_response(writer: &mut dyn Write, response: &Response) -> Result<()> {
     writer.write_all(b"\n")?;
     writer.flush()?;
     Ok(())
+}
+
+fn debug_log(message: &str) {
+    if std::env::var_os("MODAL_FIND_DEBUG_SIDECAR").is_some() {
+        eprintln!("[modal-find/sidecar] {message}");
+    }
+}
+
+fn request_type(request: &Request) -> &'static str {
+    match request {
+        Request::Init { .. } => "init",
+        Request::Search { .. } => "search",
+        Request::Rescan { .. } => "rescan",
+        Request::Shutdown { .. } => "shutdown",
+    }
+}
+
+fn response_type(response: &Response) -> &'static str {
+    match response {
+        Response::Ready { .. } => "ready",
+        Response::Ack { .. } => "ack",
+        Response::Results { .. } => "results",
+        Response::Error { .. } => "error",
+    }
 }
 
 fn grep_options(limit: usize, case_sensitive: bool, regex_enabled: bool) -> GrepSearchOptions {

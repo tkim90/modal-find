@@ -18,6 +18,7 @@ export class SearchService implements vscode.Disposable {
 	private sidecar?: FffProcess;
 	private rescanTimer?: NodeJS.Timeout;
 	private refreshTimer?: NodeJS.Timeout;
+	private disposed = false;
 	private lastQuery = '';
 
 	public readonly onDidChange = this.onDidChangeEmitter.event;
@@ -37,6 +38,11 @@ export class SearchService implements vscode.Disposable {
 	}
 
 	dispose(): void {
+		if (this.disposed) {
+			return;
+		}
+
+		this.disposed = true;
 		this.clearTimers();
 		this.sidecar?.dispose();
 		for (const disposable of this.disposables) {
@@ -50,6 +56,10 @@ export class SearchService implements vscode.Disposable {
 		regexEnabled = false,
 		resultLimit = DEFAULT_RESULT_LIMIT
 	): Promise<SearchResponse> {
+		if (this.disposed) {
+			throw new Error('Search service is disposed.');
+		}
+
 		if (!vscode.workspace.workspaceFolders?.length) {
 			throw new Error('Open a folder or workspace before using Modal Find.');
 		}
@@ -58,6 +68,8 @@ export class SearchService implements vscode.Disposable {
 		this.lastQuery = query;
 
 		try {
+			console.log(`[search] ${query}`)
+			console.log(`await this.ensureSidecar ${(await this.ensureSidecar())}`)
 			const response = await (await this.ensureSidecar()).search(
 				query,
 				resultLimit,
@@ -65,6 +77,12 @@ export class SearchService implements vscode.Disposable {
 				caseSensitive,
 				regexEnabled
 			);
+			console.log(`[search][response] ${query} -- ${response}`)
+			console.log(JSON.stringify(response, null, 2))
+
+			if (this.disposed) {
+				throw new Error('Search service is disposed.');
+			}
 
 			if (response.isScanning) {
 				this.scheduleRefresh();
@@ -93,6 +111,10 @@ export class SearchService implements vscode.Disposable {
 	}
 
 	private async ensureSidecar(): Promise<FffProcess> {
+		if (this.disposed) {
+			throw new Error('Search service is disposed.');
+		}
+
 		if (!vscode.workspace.workspaceFolders?.length) {
 			throw new Error('Open a folder or workspace before using Modal Find.');
 		}
@@ -109,6 +131,10 @@ export class SearchService implements vscode.Disposable {
 	}
 
 	private async restartSidecar(): Promise<void> {
+		if (this.disposed) {
+			return;
+		}
+
 		this.sidecar?.dispose();
 		this.sidecar = undefined;
 		this.clearTimers();
@@ -121,11 +147,13 @@ export class SearchService implements vscode.Disposable {
 			}
 		}
 
-		this.onDidChangeEmitter.fire();
+		if (!this.disposed) {
+			this.onDidChangeEmitter.fire();
+		}
 	}
 
 	private scheduleRescan(): void {
-		if (!this.sidecar) {
+		if (this.disposed || !this.sidecar) {
 			return;
 		}
 
@@ -140,7 +168,7 @@ export class SearchService implements vscode.Disposable {
 	}
 
 	private async runRescan(): Promise<void> {
-		if (!this.sidecar) {
+		if (this.disposed || !this.sidecar) {
 			return;
 		}
 
@@ -152,12 +180,22 @@ export class SearchService implements vscode.Disposable {
 			this.sidecar = undefined;
 		}
 
-		this.onDidChangeEmitter.fire();
+		if (!this.disposed) {
+			this.onDidChangeEmitter.fire();
+		}
 	}
 
 	private scheduleRefresh(): void {
+		if (this.disposed) {
+			return;
+		}
+
 		this.clearRefreshTimer();
 		this.refreshTimer = setTimeout(() => {
+			if (this.disposed) {
+				return;
+			}
+
 			this.refreshTimer = undefined;
 			this.onDidChangeEmitter.fire();
 		}, SCAN_REFRESH_DELAY_MS);

@@ -54,9 +54,13 @@ const outputDirectory = path.join(repoRoot, 'dist', 'native', platformId);
 fs.mkdirSync(outputDirectory, { recursive: true });
 
 const outputPath = path.join(outputDirectory, binaryName);
-fs.copyFileSync(builtBinaryPath, outputPath);
+const tempOutputPath = `${outputPath}.tmp`;
+const binaryContents = fs.readFileSync(builtBinaryPath);
+fs.writeFileSync(tempOutputPath, binaryContents);
 if (!platformId.startsWith('win32-')) {
-	fs.chmodSync(outputPath, 0o755);
+	fs.chmodSync(tempOutputPath, 0o755);
 }
+fs.rmSync(outputPath, { force: true });
+fs.renameSync(tempOutputPath, outputPath);
 
 console.log(`Bundled native sidecar at ${outputPath}`);
