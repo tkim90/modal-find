@@ -330,7 +330,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			border: 1px solid #313131;
 			background: #111111;
 			color: #f2f2f2;
-			padding: 14px 16px;
+			padding: 2px 2px;
 			border-radius: 0;
 			font-size: 16px;
 			outline: none;
