@@ -4,6 +4,8 @@ src/**
 tsconfig.json
 eslint.config.mjs
 **/*.map
+media/*.ts
+media/tsconfig.json
 native/**
 scripts/**
 dist/native/**/fff-bridge-nodecopy-test

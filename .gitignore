@@ -4,5 +4,6 @@ out
 dist
 native/fff-bridge/target
 *.vsix
+media/modal.js
 
 .TODO
