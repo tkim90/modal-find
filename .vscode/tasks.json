@@ -4,8 +4,20 @@
 		{
 			"type": "npm",
 			"script": "watch",
-			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
+			"problemMatcher": {
+				"owner": "esbuild",
+				"fileLocation": "absolute",
+				"pattern": {
+					"regexp": "^✘ \\[ERROR\\] (.+)",
+					"message": 1
+				},
+				"background": {
+					"activeOnStart": true,
+					"beginsPattern": "\\[watch\\] build started",
+					"endsPattern": "\\[watch\\] build finished"
+				}
+			},
 			"presentation": {
 				"reveal": "never"
 			},

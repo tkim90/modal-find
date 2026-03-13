@@ -2,6 +2,7 @@ import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as readline from 'readline';
 import * as vscode from 'vscode';
 import { traceLifecycle } from './debug';
+import { toError } from './errors';
 import { getBundledSidecarPath } from './nativeBinary';
 
 interface InitRequest {
@@ -354,6 +355,3 @@ export class FffProcess implements vscode.Disposable {
 	}
 }
 
-function toError(error: unknown): Error {
-	return error instanceof Error ? error : new Error(String(error));
-}

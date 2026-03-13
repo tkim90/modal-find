@@ -29,7 +29,3 @@ export function getBundledSidecarPath(extensionUri: vscode.Uri): string {
 
 	return binaryPath;
 }
-
-export function assertBundledSidecarAvailable(extensionUri: vscode.Uri): void {
-	void getBundledSidecarPath(extensionUri);
-}
