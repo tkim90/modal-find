@@ -3,7 +3,7 @@
   "displayName": "Modal Find",
   "description": "Global fuzzy search in a WebStorm-style modal for VS Code",
   "version": "0.0.1",
-  "publisher": "tkim90",
+  "publisher": "TaeKim",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -32,7 +32,27 @@
         "key": "ctrl+shift+f",
         "mac": "cmd+shift+f"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Modal Find",
+      "properties": {
+        "modal-find.debug.traceLifecycle": {
+          "type": "boolean",
+          "default": false,
+          "description": "Write Modal Find webview, panel, and sidecar lifecycle timings to the Modal Find Trace output channel."
+        },
+        "modal-find.debug.disableWarmup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Disable search sidecar warmup so first-open timing can be compared against the default behavior."
+        },
+        "modal-find.debug.disposeOnClose": {
+          "type": "boolean",
+          "default": false,
+          "description": "Dispose the panel on Escape instead of retaining the hidden webview for reopen timing comparisons."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

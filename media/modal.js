@@ -2,6 +2,61 @@
 /* eslint-disable */
 (function () {
 	const vscode = acquireVsCodeApi();
+	const lifecycleOrigin = performance.now();
+
+	function normalizeLifecycleValue(value) {
+		if (value instanceof Error) {
+			return {
+				name: value.name,
+				message: value.message,
+				stack: value.stack
+			};
+		}
+		if (value === undefined) {
+			return '[undefined]';
+		}
+		if (value && typeof value === 'object') {
+			try {
+				return JSON.parse(JSON.stringify(value));
+			} catch {
+				return String(value);
+			}
+		}
+		return value;
+	}
+
+	function postLifecycle(event, detail) {
+		const normalizedDetail = detail
+			? Object.fromEntries(
+				Object.entries(detail).map(([key, value]) => [key, normalizeLifecycleValue(value)])
+			)
+			: undefined;
+		vscode.postMessage({
+			type: 'lifecycleTrace',
+			event,
+			elapsedMs: Number((performance.now() - lifecycleOrigin).toFixed(1)),
+			detail: normalizedDetail
+		});
+	}
+
+	window.addEventListener('error', (event) => {
+		postLifecycle('rendererError', {
+			message: event.message,
+			filename: event.filename,
+			lineno: event.lineno,
+			colno: event.colno,
+			stack: event.error?.stack
+		});
+	});
+
+	window.addEventListener('unhandledrejection', (event) => {
+		postLifecycle('unhandledRejection', {
+			reason: normalizeLifecycleValue(event.reason)
+		});
+	});
+
+	postLifecycle('bootstrapStart');
+
 	const queryInput = document.getElementById('query');
 	const resultsRoot = document.getElementById('results');
 	const previewRoot = document.getElementById('preview');
@@ -29,6 +84,7 @@
 	let pendingResultHighlightRaf = 0;
 	let highlightLoaderPromise = null;
 	let resultHighlightVersion = 0;
+	let visibleFrameVersion = 0;
 
 	const savedState = vscode.getState();
 	if (savedState?.query) {
@@ -243,6 +299,21 @@
 		splitRatio = ratio;
 		const r = Math.max(0.1, Math.min(0.9, ratio));
 		modalRoot.style.gridTemplateRows = 'auto ' + r + 'fr 5px ' + (1 - r) + 'fr auto';
+	}
+
+	function scheduleFirstVisibleFrame(source) {
+		const version = ++visibleFrameVersion;
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
+				if (version !== visibleFrameVersion) {
+					return;
+				}
+				postLifecycle('firstVisibleFrame', {
+					source,
+					hidden: document.hidden
+				});
+			});
+		});
 	}
 
 	function updateCaseToggle() {
@@ -723,6 +794,16 @@
 		}
 	});
 
+	document.addEventListener('visibilitychange', () => {
+		if (document.hidden) {
+			return;
+		}
+		postLifecycle('visibleAgain', {
+			visibilityState: document.visibilityState
+		});
+		scheduleFirstVisibleFrame('visibleAgain');
+	});
+
 	// Corner resize handles
 	(function initResize() {
 		let active = null;
@@ -856,6 +937,14 @@
 	queryInput.select();
 	renderAll();
 	syncState();
+	postLifecycle('ready', {
+		hasQuery: Boolean(currentQuery),
+		caseSensitive,
+		regexEnabled
+	});
+	if (!document.hidden) {
+		scheduleFirstVisibleFrame('bootstrap');
+	}
 	vscode.postMessage({
 		type: 'ready',
 		query: currentQuery,

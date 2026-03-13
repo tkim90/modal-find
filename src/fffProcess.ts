@@ -1,6 +1,7 @@
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as readline from 'readline';
 import * as vscode from 'vscode';
+import { traceLifecycle } from './debug';
 import { getBundledSidecarPath } from './nativeBinary';
 
 interface InitRequest {
@@ -216,9 +217,16 @@ export class FffProcess implements vscode.Disposable {
 		this.stopCurrentProcess();
 
 		const binaryPath = getBundledSidecarPath(this.extensionUri);
+		traceLifecycle('sidecar.process.spawn.start', {
+			binaryPath
+		});
 		const process = spawn(binaryPath, [], {
 			cwd: this.extensionUri.fsPath,
 			stdio: ['pipe', 'pipe', 'pipe']
+		});
+		traceLifecycle('sidecar.process.spawn.end', {
+			binaryPath,
+			pid: process.pid ?? null
 		});
 
 		this.process = process;
@@ -248,6 +256,9 @@ export class FffProcess implements vscode.Disposable {
 		});
 
 		process.on('error', (error) => {
+			traceLifecycle('sidecar.process.error', {
+				message: error.message
+			});
 			this.handleProcessExit(new Error(`Failed to start native fff sidecar: ${error.message}`));
 		});
 
@@ -257,6 +268,10 @@ export class FffProcess implements vscode.Disposable {
 			}
 
 			const detail = signal ? `signal ${signal}` : `code ${code ?? 'unknown'}`;
+			traceLifecycle('sidecar.process.exit', {
+				code: code ?? null,
+				signal: signal ?? null
+			});
 			this.handleProcessExit(new Error(`Native fff sidecar exited with ${detail}.`));
 		});
 	}

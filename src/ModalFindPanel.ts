@@ -1,11 +1,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { getDebugOptions, traceLifecycle } from './debug';
 import { SearchResponse, SearchResult } from './searchTypes';
 import { SearchService } from './searchService';
 
 type WebviewMessage =
 	| { type: 'ready'; query?: string; caseSensitive?: boolean; regexEnabled?: boolean }
+	| { type: 'lifecycleTrace'; event: string; elapsedMs?: number; detail?: Record<string, unknown> }
 	| { type: 'close' }
 	| { type: 'queryChanged'; value: string; caseSensitive: boolean; regexEnabled: boolean }
 	| { type: 'openResult'; resultId: string }
@@ -31,6 +33,7 @@ interface ReturnFocusTarget {
 
 export class ModalFindPanel implements vscode.Disposable {
 	private static currentPanel: ModalFindPanel | undefined;
+	private static nextPanelId = 1;
 	private static cachedAssets:
 		| {
 				css: string;
@@ -57,12 +60,21 @@ export class ModalFindPanel implements vscode.Disposable {
 		searchService: SearchService
 	): void {
 		if (ModalFindPanel.currentPanel) {
+			traceLifecycle('panel.reveal.requested', {
+				panelId: ModalFindPanel.currentPanel.panelId,
+				visible: ModalFindPanel.currentPanel.panel.visible,
+				active: ModalFindPanel.currentPanel.panel.active
+			});
 			ModalFindPanel.currentPanel.captureReturnFocusTarget(vscode.window.activeTextEditor);
 			ModalFindPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active, false);
 			ModalFindPanel.currentPanel.focusQuery();
 			return;
 		}
 
+		const panelId = ModalFindPanel.nextPanelId++;
+		traceLifecycle('panel.create.start', {
+			panelId
+		});
 		const panel = vscode.window.createWebviewPanel(
 			'modal-find.search',
 			'Find',
@@ -75,12 +87,17 @@ export class ModalFindPanel implements vscode.Disposable {
 				retainContextWhenHidden: true
 			}
 		);
+		traceLifecycle('panel.create.returned', {
+			panelId,
+			retainContextWhenHidden: true
+		});
 
 		ModalFindPanel.currentPanel = new ModalFindPanel(
 			panel,
 			context,
 			searchService,
-			captureReturnFocusTarget(vscode.window.activeTextEditor)
+			captureReturnFocusTarget(vscode.window.activeTextEditor),
+			panelId
 		);
 	}
 
@@ -89,20 +106,35 @@ export class ModalFindPanel implements vscode.Disposable {
 	}
 
 	private readonly context: vscode.ExtensionContext;
+	private readonly panelId: number;
 
 	private constructor(
 		panel: vscode.WebviewPanel,
 		context: vscode.ExtensionContext,
 		searchService: SearchService,
-		returnFocusTarget: ReturnFocusTarget | undefined
+		returnFocusTarget: ReturnFocusTarget | undefined,
+		panelId: number
 	) {
 		this.panel = panel;
 		this.context = context;
 		this.searchService = searchService;
 		this.returnFocusTarget = returnFocusTarget;
+		this.panelId = panelId;
 
 		this.disposables.push(
-			this.panel.onDidDispose(() => this.dispose()),
+			this.panel.onDidDispose(() => {
+				traceLifecycle('panel.onDidDispose', {
+					panelId: this.panelId
+				});
+				this.dispose();
+			}),
+			this.panel.onDidChangeViewState((event) => {
+				traceLifecycle('panel.viewState.changed', {
+					panelId: this.panelId,
+					visible: event.webviewPanel.visible,
+					active: event.webviewPanel.active
+				});
+			}),
 			this.panel.webview.onDidReceiveMessage((message: WebviewMessage) => {
 				if (this.disposed) {
 					return;
@@ -112,6 +144,9 @@ export class ModalFindPanel implements vscode.Disposable {
 		);
 
 		this.panel.webview.html = this.getHtmlForWebview(context.extensionUri, this.panel.webview);
+		traceLifecycle('panel.html.assigned', {
+			panelId: this.panelId
+		});
 	}
 
 	public dispose(): void {
@@ -121,6 +156,9 @@ export class ModalFindPanel implements vscode.Disposable {
 
 		this.disposed = true;
 		this.requestVersion += 1;
+		traceLifecycle('panel.dispose', {
+			panelId: this.panelId
+		});
 
 		if (ModalFindPanel.currentPanel === this) {
 			ModalFindPanel.currentPanel = undefined;
@@ -137,7 +175,20 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 
 		switch (message.type) {
+			case 'lifecycleTrace':
+				traceLifecycle(`webview.${message.event}`, {
+					panelId: this.panelId,
+					elapsedMs: message.elapsedMs,
+					...message.detail
+				});
+				return;
 			case 'ready': {
+				traceLifecycle('webview.ready.received', {
+					panelId: this.panelId,
+					hasQuery: Boolean(message.query),
+					caseSensitive: message.caseSensitive ?? this.lastCaseSensitive,
+					regexEnabled: message.regexEnabled ?? this.lastRegexEnabled
+				});
 				this.lastQuery = message.query ?? this.lastQuery;
 				this.lastCaseSensitive = message.caseSensitive ?? this.lastCaseSensitive;
 				this.lastRegexEnabled = message.regexEnabled ?? this.lastRegexEnabled;
@@ -151,12 +202,20 @@ export class ModalFindPanel implements vscode.Disposable {
 						splitRatio
 					});
 				}
-				void this.searchService.warmup();
+				if (getDebugOptions().disableWarmup) {
+					traceLifecycle('search.warmup.skipped', {
+						panelId: this.panelId,
+						source: 'panel-ready',
+						reason: 'config.disableWarmup'
+					});
+				} else {
+					void this.searchService.warmup('panel-ready');
+				}
 				this.showIdleState();
 				return;
 			}
 			case 'close':
-				await this.hide();
+				await this.close();
 				return;
 			case 'queryChanged':
 				this.lastQuery = message.value;
@@ -260,22 +319,51 @@ export class ModalFindPanel implements vscode.Disposable {
 		});
 	}
 
-	private async hide(): Promise<void> {
+	private async close(): Promise<void> {
+		const disposeOnClose = getDebugOptions().disposeOnClose;
+		traceLifecycle('panel.close.requested', {
+			panelId: this.panelId,
+			disposeOnClose
+		});
+
+		const restoredFocus = await this.restoreFocusTarget();
+		if (disposeOnClose || !restoredFocus) {
+			this.panel.dispose();
+		}
+	}
+
+	private async restoreFocusTarget(): Promise<boolean> {
 		const focusTarget = this.returnFocusTarget;
 		if (!focusTarget) {
-			this.panel.dispose();
-			return;
+			traceLifecycle('panel.focus.restore.skipped', {
+				panelId: this.panelId,
+				reason: 'noFocusTarget'
+			});
+			return false;
 		}
 
 		try {
+			traceLifecycle('panel.focus.restore.start', {
+				panelId: this.panelId,
+				path: focusTarget.uri.fsPath
+			});
 			const document = await vscode.workspace.openTextDocument(focusTarget.uri);
 			await vscode.window.showTextDocument(document, {
 				preserveFocus: false,
 				viewColumn: focusTarget.viewColumn,
 				selection: focusTarget.selection
 			});
+			traceLifecycle('panel.focus.restore.end', {
+				panelId: this.panelId,
+				path: focusTarget.uri.fsPath
+			});
+			return true;
 		} catch {
-			this.panel.dispose();
+			traceLifecycle('panel.focus.restore.error', {
+				panelId: this.panelId,
+				path: focusTarget.uri.fsPath
+			});
+			return false;
 		}
 	}
 
