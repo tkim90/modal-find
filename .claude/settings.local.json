@@ -9,7 +9,16 @@
       "Read(//Users/taekim/.nvm/versions/node/**)",
       "Bash(/Users/taekim/.nvm/versions/node/v25.3.0/bin/npx tsc:*)",
       "Bash(cargo check:*)",
-      "mcp__filesystem__read_text_file"
+      "mcp__filesystem__read_text_file",
+      "Bash(du -sh node_modules/*/)",
+      "Bash(du -h /Users/taekim/Documents/projects/sideprojects/modal-find/media/*)",
+      "Bash(du -sh */ .*)",
+      "Bash(unzip -l modal-find-0.0.1.vsix)",
+      "Bash(du -h /Users/taekim/Documents/projects/sideprojects/modal-find/dist/*/*)",
+      "Bash(unzip -l /Users/taekim/Documents/projects/sideprojects/modal-find/modal-find-0.0.1.vsix)",
+      "Bash(sort -k1 -n -r)",
+      "Bash(strip -x -o /dev/null dist/native/darwin-arm64/fff-bridge)",
+      "Bash(nm dist/native/darwin-arm64/fff-bridge)"
     ]
   }
 }

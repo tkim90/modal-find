@@ -1,0 +1,87 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform_id: darwin-arm64
+            target_triple: aarch64-apple-darwin
+          - os: macos-latest
+            platform_id: darwin-x64
+            target_triple: x86_64-apple-darwin
+          - os: ubuntu-latest
+            platform_id: linux-x64
+            target_triple: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            platform_id: win32-x64
+            target_triple: x86_64-pc-windows-msvc
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target_triple }}
+
+      - run: npm ci
+
+      - name: Compile TypeScript and build native binary
+        env:
+          MODAL_FIND_PLATFORM_ID: ${{ matrix.platform_id }}
+          MODAL_FIND_TARGET_TRIPLE: ${{ matrix.target_triple }}
+        run: npm run compile
+
+      - name: Package platform-specific .vsix
+        run: npx @vscode/vsce package --target ${{ matrix.platform_id }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.platform_id }}
+          path: "*.vsix"
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: vsix-*
+          merge-multiple: true
+          path: vsix
+
+      - name: Publish to VS Code Marketplace
+        run: npx @vscode/vsce publish --packagePath vsix/*.vsix
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            vsix/*.vsix \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

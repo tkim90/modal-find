@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { traceLifecycle } from './debug';
 import { FffProcess, FffSearchResult } from './fffProcess';
 import { SearchResponse, SearchResult, SearchResultPreview } from './searchTypes';
 
@@ -6,7 +7,6 @@ const DEFAULT_RESULT_LIMIT = 160;
 const PREVIEW_MAX_LINES = 100;
 const MAX_PREVIEW_FILE_SIZE_BYTES = 1024 * 1024;
 const RESCAN_DEBOUNCE_MS = 250;
-const SCAN_REFRESH_DELAY_MS = 350;
 const PREVIEW_UNAVAILABLE_TEXT = 'Preview unavailable for this file.';
 
 type PreviewCache = Map<string, Promise<string[] | undefined>>;
@@ -15,21 +15,18 @@ export class SearchService implements vscode.Disposable {
 	private readonly disposables: vscode.Disposable[] = [];
 	private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
 	private sidecar?: FffProcess;
+	private sidecarInitPromise?: Promise<FffProcess>;
+	private watcher?: vscode.FileSystemWatcher;
 	private rescanTimer?: NodeJS.Timeout;
-	private refreshTimer?: NodeJS.Timeout;
 	private disposed = false;
-	private lastQuery = '';
+	private searchCount = 0;
+	private warmupCount = 0;
 
 	public readonly onDidChange = this.onDidChangeEmitter.event;
 
 	constructor(private readonly extensionUri: vscode.Uri) {
-		const watcher = vscode.workspace.createFileSystemWatcher('**/*');
 		this.disposables.push(
 			this.onDidChangeEmitter,
-			watcher,
-			watcher.onDidCreate(() => this.scheduleRescan()),
-			watcher.onDidChange(() => this.scheduleRescan()),
-			watcher.onDidDelete(() => this.scheduleRescan()),
 			vscode.workspace.onDidChangeWorkspaceFolders(() => {
 				void this.restartSidecar();
 			})
@@ -42,6 +39,7 @@ export class SearchService implements vscode.Disposable {
 		}
 
 		this.disposed = true;
+		this.sidecarInitPromise = undefined;
 		this.clearTimers();
 		this.sidecar?.dispose();
 		for (const disposable of this.disposables) {
@@ -64,10 +62,18 @@ export class SearchService implements vscode.Disposable {
 		}
 
 		const startedAt = Date.now();
-		this.lastQuery = query;
+		const searchNumber = ++this.searchCount;
+		traceLifecycle('search.query.start', {
+			searchNumber,
+			firstQuery: searchNumber === 1,
+			queryLength: query.length,
+			caseSensitive,
+			regexEnabled,
+			resultLimit
+		});
 
 		try {
-			const response = await (await this.ensureSidecar()).search(
+			const response = await (await this.ensureSidecar('search')).search(
 				query,
 				resultLimit,
 				getCurrentFilePath(),
@@ -79,18 +85,12 @@ export class SearchService implements vscode.Disposable {
 				throw new Error('Search service is disposed.');
 			}
 
-			if (response.isScanning) {
-				this.scheduleRefresh();
-			} else {
-				this.clearRefreshTimer();
-			}
-
 			const previewCache: PreviewCache = new Map();
 			const results = await Promise.all(
 				response.results.map((result) => this.toSearchResult(result, previewCache))
 			);
 
-			return {
+			const searchResponse = {
 				query,
 				results,
 				indexedFileCount: response.indexedFileCount,
@@ -98,14 +98,66 @@ export class SearchService implements vscode.Disposable {
 				skippedFileCount: response.skippedFileCount,
 				durationMs: Date.now() - startedAt
 			};
+			traceLifecycle('search.query.end', {
+				searchNumber,
+				firstQuery: searchNumber === 1,
+				durationMs: searchResponse.durationMs,
+				resultCount: searchResponse.results.length,
+				indexedFileCount: searchResponse.indexedFileCount,
+				searchableFileCount: searchResponse.searchableFileCount,
+				skippedFileCount: searchResponse.skippedFileCount
+			});
+			return searchResponse;
 		} catch (error) {
-			this.sidecar?.dispose();
-			this.sidecar = undefined;
+			if (this.sidecar && !this.sidecar.isAlive()) {
+				this.sidecar.dispose();
+				this.sidecar = undefined;
+			}
+			traceLifecycle('search.query.error', {
+				searchNumber,
+				firstQuery: searchNumber === 1,
+				durationMs: Date.now() - startedAt,
+				error: toErrorMessage(error)
+			});
 			throw error;
 		}
 	}
 
-	private async ensureSidecar(): Promise<FffProcess> {
+	public async warmup(source = 'unknown'): Promise<void> {
+		if (this.disposed || !vscode.workspace.workspaceFolders?.length) {
+			traceLifecycle('search.warmup.skipped', {
+				source,
+				reason: this.disposed ? 'disposed' : 'noWorkspace'
+			});
+			return;
+		}
+
+		const warmupNumber = ++this.warmupCount;
+		const startedAt = Date.now();
+		traceLifecycle('search.warmup.start', {
+			source,
+			warmupNumber
+		});
+
+		try {
+			await this.ensureSidecar(`warmup:${source}`);
+			traceLifecycle('search.warmup.end', {
+				source,
+				warmupNumber,
+				durationMs: Date.now() - startedAt
+			});
+		} catch (error) {
+			traceLifecycle('search.warmup.error', {
+				source,
+				warmupNumber,
+				durationMs: Date.now() - startedAt,
+				error: toErrorMessage(error)
+			});
+			// Surface startup issues on the next explicit search request.
+		}
+	}
+
+	private async ensureSidecar(reason: string): Promise<FffProcess> {
 		if (this.disposed) {
 			throw new Error('Search service is disposed.');
 		}
@@ -113,16 +165,66 @@ export class SearchService implements vscode.Disposable {
 		if (!vscode.workspace.workspaceFolders?.length) {
 			throw new Error('Open a folder or workspace before using Modal Find.');
 		}
+		const workspaceFolders = vscode.workspace.workspaceFolders;
 
 		if (this.sidecar?.isAlive()) {
+			traceLifecycle('sidecar.ready.reuse', {
+				reason
+			});
 			return this.sidecar;
+		}
+
+		if (this.sidecarInitPromise) {
+			traceLifecycle('sidecar.init.awaitExisting', {
+				reason
+			});
+			return this.sidecarInitPromise;
 		}
 
 		this.sidecar?.dispose();
 		const nextSidecar = new FffProcess(this.extensionUri);
-		await nextSidecar.init(vscode.workspace.workspaceFolders.map((folder) => folder.uri.fsPath));
-		this.sidecar = nextSidecar;
-		return nextSidecar;
+		const startedAt = Date.now();
+		traceLifecycle('sidecar.init.start', {
+			reason,
+			workspaceFolderCount: workspaceFolders.length
+		});
+		const initPromise = (async () => {
+			try {
+				await nextSidecar.init(workspaceFolders.map((folder) => folder.uri.fsPath));
+				if (this.disposed) {
+					nextSidecar.dispose();
+					throw new Error('Search service is disposed.');
+				}
+
+				this.sidecar = nextSidecar;
+				this.ensureWatcher();
+				traceLifecycle('sidecar.init.ready', {
+					reason,
+					durationMs: Date.now() - startedAt
+				});
+				return nextSidecar;
+			} catch (error) {
+				nextSidecar.dispose();
+				if (this.sidecar === nextSidecar) {
+					this.sidecar = undefined;
+				}
+				traceLifecycle('sidecar.init.error', {
+					reason,
+					durationMs: Date.now() - startedAt,
+					error: toErrorMessage(error)
+				});
+				throw error;
+			}
+		})();
+
+		this.sidecarInitPromise = initPromise;
+		void initPromise.finally(() => {
+			if (this.sidecarInitPromise === initPromise) {
+				this.sidecarInitPromise = undefined;
+			}
+		});
+
+		return initPromise;
 	}
 
 	private async restartSidecar(): Promise<void> {
@@ -136,7 +238,7 @@ export class SearchService implements vscode.Disposable {
 
 		if (vscode.workspace.workspaceFolders?.length) {
 			try {
-				await this.ensureSidecar();
+				await this.ensureSidecar('restart');
 			} catch {
 				// Surface the error on the next explicit search request.
 			}
@@ -169,7 +271,6 @@ export class SearchService implements vscode.Disposable {
 
 		try {
 			await this.sidecar.rescan();
-			this.scheduleRefresh();
 		} catch {
 			this.sidecar.dispose();
 			this.sidecar = undefined;
@@ -180,38 +281,26 @@ export class SearchService implements vscode.Disposable {
 		}
 	}
 
-	private scheduleRefresh(): void {
-		if (this.disposed) {
-			return;
-		}
-
-		this.clearRefreshTimer();
-		this.refreshTimer = setTimeout(() => {
-			if (this.disposed) {
-				return;
-			}
-
-			this.refreshTimer = undefined;
-			this.onDidChangeEmitter.fire();
-		}, SCAN_REFRESH_DELAY_MS);
-	}
-
-	private clearRefreshTimer(): void {
-		if (!this.refreshTimer) {
-			return;
-		}
-
-		clearTimeout(this.refreshTimer);
-		this.refreshTimer = undefined;
-	}
-
 	private clearTimers(): void {
 		if (this.rescanTimer) {
 			clearTimeout(this.rescanTimer);
 			this.rescanTimer = undefined;
 		}
+	}
 
-		this.clearRefreshTimer();
+	private ensureWatcher(): void {
+		if (this.disposed || this.watcher) {
+			return;
+		}
+
+		const watcher = vscode.workspace.createFileSystemWatcher('**/*');
+		this.watcher = watcher;
+		this.disposables.push(
+			watcher,
+			watcher.onDidCreate(() => this.scheduleRescan()),
+			watcher.onDidChange(() => this.scheduleRescan()),
+			watcher.onDidDelete(() => this.scheduleRescan())
+		);
 	}
 
 	private async toSearchResult(
@@ -249,6 +338,10 @@ export class SearchService implements vscode.Disposable {
 			preview: await buildLinePreview(uri, result.lineNumber, result.lineText, previewCache)
 		};
 	}
+}
+
+function toErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 const decoder = new TextDecoder('utf-8');
