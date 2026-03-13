@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { FffProcess, FffSearchResult } from './fffProcess';
 import { SearchResponse, SearchResult, SearchResultPreview } from './searchTypes';
 
-const DEFAULT_RESULT_LIMIT = 80;
+const DEFAULT_RESULT_LIMIT = 160;
 const PREVIEW_MAX_LINES = 100;
 const MAX_PREVIEW_FILE_SIZE_BYTES = 1024 * 1024;
 const RESCAN_DEBOUNCE_MS = 250;
