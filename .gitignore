@@ -3,3 +3,4 @@ out
 .vscode-test
 dist
 native/fff-bridge/target
+*.vsix
