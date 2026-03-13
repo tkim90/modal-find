@@ -282,7 +282,7 @@ export class ModalFindPanel implements vscode.Disposable {
 				</div>
 			</div>
 			<div id="results" class="results" tabindex="0"></div>
-			<div id="preview" class="preview"></div>
+			<div id="preview" class="preview" tabindex="0"></div>
 			<div id="footer" class="footer">
 				<div id="meta">Indexing workspace\u2026</div>
 				<div id="status">Type to search</div>

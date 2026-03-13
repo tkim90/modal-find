@@ -213,6 +213,11 @@
 		`;
 
 		previewRoot.querySelectorAll('.code-line.is-match > .code-text').forEach(addSearchMarks);
+
+		const matchLine = previewRoot.querySelector('.code-line.is-match');
+		if (matchLine) {
+			matchLine.scrollIntoView({ block: 'center' });
+		}
 	}
 
 	function renderAll() {
@@ -310,10 +315,18 @@
 		}
 		if (event.key === 'Escape') {
 			event.preventDefault();
+			if (previewRoot.contains(document.activeElement) || document.activeElement === previewRoot) {
+				queryInput.focus();
+				return;
+			}
 			vscode.postMessage({ type: 'close' });
 			return;
 		}
 		if (document.activeElement === queryInput) {
+			return;
+		}
+		if (previewRoot.contains(document.activeElement) || document.activeElement === previewRoot) {
+			// Let arrow keys scroll the preview naturally
 			return;
 		}
 		if (event.key === 'ArrowDown') {

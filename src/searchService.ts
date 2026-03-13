@@ -274,7 +274,7 @@ async function buildFilePreview(uri: vscode.Uri, previewCache: PreviewCache): Pr
 		];
 	}
 
-	return lines.slice(0, FILE_PREVIEW_LINE_COUNT).map((text, index) => ({
+	return lines.map((text, index) => ({
 		lineNumber: index + 1,
 		text,
 		isMatch: false
@@ -293,19 +293,12 @@ async function buildLinePreview(
 	}
 
 	const matchLineIndex = Math.min(Math.max(0, lineNumber - 1), lines.length - 1);
-	const start = Math.max(0, matchLineIndex - PREVIEW_CONTEXT_RADIUS);
-	const end = Math.min(lines.length - 1, matchLineIndex + PREVIEW_CONTEXT_RADIUS);
-	const preview: SearchResultPreview[] = [];
 
-	for (let index = start; index <= end; index += 1) {
-		preview.push({
-			lineNumber: index + 1,
-			text: lines[index] ?? '',
-			isMatch: index === matchLineIndex
-		});
-	}
-
-	return preview;
+	return lines.map((text, index) => ({
+		lineNumber: index + 1,
+		text,
+		isMatch: index === matchLineIndex
+	}));
 }
 
 async function loadTextLines(
