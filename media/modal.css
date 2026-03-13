@@ -275,6 +275,10 @@ mark {
 	padding: 4 1px;
 }
 
+mark * {
+	color: #000000 !important;
+}
+
 /* highlight.js token colors — VS Code Dark+ inspired */
 .hljs-keyword,
 .hljs-selector-tag { color: #c586c0; }

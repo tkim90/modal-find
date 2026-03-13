@@ -95,6 +95,73 @@
 		}
 	}
 
+	function collectTextSegments(container) {
+		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+			acceptNode(node) {
+				return node.parentElement?.closest('mark')
+					? NodeFilter.FILTER_REJECT
+					: NodeFilter.FILTER_ACCEPT;
+			}
+		});
+		const segments = [];
+		let fullText = '';
+
+		while (walker.nextNode()) {
+			const node = walker.currentNode;
+			const text = node.textContent || '';
+			if (!text) {
+				continue;
+			}
+
+			const start = fullText.length;
+			fullText += text;
+			segments.push({
+				node,
+				start,
+				end: fullText.length
+			});
+		}
+
+		return { segments, fullText };
+	}
+
+	function resolveTextOffset(segments, offset, isEndOffset) {
+		for (const segment of segments) {
+			const withinSegment = isEndOffset
+				? offset >= segment.start && offset <= segment.end
+				: offset >= segment.start && offset < segment.end;
+			if (!withinSegment) {
+				continue;
+			}
+
+			return {
+				node: segment.node,
+				offset: offset - segment.start
+			};
+		}
+
+		return null;
+	}
+
+	function wrapMatchesWithMarks(segments, matches) {
+		for (let index = matches.length - 1; index >= 0; index -= 1) {
+			const match = matches[index];
+			const start = resolveTextOffset(segments, match.start, false);
+			const end = resolveTextOffset(segments, match.end, true);
+			if (!start || !end) {
+				continue;
+			}
+
+			const range = document.createRange();
+			range.setStart(start.node, start.offset);
+			range.setEnd(end.node, end.offset);
+
+			const mark = document.createElement('mark');
+			mark.appendChild(range.extractContents());
+			range.insertNode(mark);
+		}
+	}
+
 	function addSearchMarks(container) {
 		if (!currentQuery) {
 			return;
@@ -111,48 +178,26 @@
 			return;
 		}
 
-		const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-		const textNodes = [];
-		while (walker.nextNode()) {
-			textNodes.push(walker.currentNode);
+		const { segments, fullText } = collectTextSegments(container);
+		if (!fullText) {
+			return;
 		}
 
-		for (const node of textNodes) {
-			const text = node.textContent;
-			if (!text) {
+		const matches = [];
+		pattern.lastIndex = 0;
+		let m;
+		while ((m = pattern.exec(fullText)) !== null) {
+			if (m[0].length === 0) {
+				pattern.lastIndex++;
 				continue;
 			}
-
-			pattern.lastIndex = 0;
-			const matches = [];
-			let m;
-			while ((m = pattern.exec(text)) !== null) {
-				if (m[0].length === 0) {
-					pattern.lastIndex++;
-					continue;
-				}
-				matches.push({ start: m.index, end: pattern.lastIndex });
-			}
-			if (!matches.length) {
-				continue;
-			}
-
-			const frag = document.createDocumentFragment();
-			let lastIdx = 0;
-			for (const match of matches) {
-				if (match.start > lastIdx) {
-					frag.appendChild(document.createTextNode(text.slice(lastIdx, match.start)));
-				}
-				const mark = document.createElement('mark');
-				mark.textContent = text.slice(match.start, match.end);
-				frag.appendChild(mark);
-				lastIdx = match.end;
-			}
-			if (lastIdx < text.length) {
-				frag.appendChild(document.createTextNode(text.slice(lastIdx)));
-			}
-			node.parentNode.replaceChild(frag, node);
+			matches.push({ start: m.index, end: pattern.lastIndex });
 		}
+		if (!matches.length) {
+			return;
+		}
+
+		wrapMatchesWithMarks(segments, matches);
 	}
 
 	function syncState() {

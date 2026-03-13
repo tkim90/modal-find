@@ -210,7 +210,6 @@ impl App {
 
             if should_use_fuzzy_file_fallback(
                 query_trimmed,
-                path_like_query,
                 line_candidates.len(),
                 literal_file_candidates.len(),
                 case_sensitive,
@@ -504,7 +503,6 @@ fn is_searchable(file: &FileItem) -> bool {
 
 fn should_use_fuzzy_file_fallback(
     query: &str,
-    path_like_query: bool,
     line_candidate_count: usize,
     literal_file_candidate_count: usize,
     case_sensitive: bool,
@@ -513,8 +511,8 @@ fn should_use_fuzzy_file_fallback(
     query.is_empty()
         || (!case_sensitive
             && !regex_enabled
-            && (path_like_query
-                || (line_candidate_count == 0 && literal_file_candidate_count == 0)))
+            && line_candidate_count == 0
+            && literal_file_candidate_count == 0)
 }
 
 fn build_file_regex(
@@ -762,24 +760,47 @@ mod tests {
     fn disables_fuzzy_file_fallback_when_case_sensitive() {
         assert!(!should_use_fuzzy_file_fallback(
             "TestClient",
-            true,
             0,
             0,
             true,
             false,
         ));
-        assert!(should_use_fuzzy_file_fallback("", false, 0, 0, true, false));
+        assert!(should_use_fuzzy_file_fallback("", 0, 0, true, false));
     }
 
     #[test]
     fn disables_fuzzy_file_fallback_when_regex_enabled() {
         assert!(!should_use_fuzzy_file_fallback(
             "test.*client",
-            false,
             0,
             0,
             false,
             true,
+        ));
+    }
+
+    #[test]
+    fn disables_fuzzy_file_fallback_for_path_like_query_when_exact_matches_exist() {
+        assert!(!should_use_fuzzy_file_fallback(
+            "MessageV2.TextPart",
+            1,
+            0,
+            false,
+            false,
+        ));
+        assert!(!should_use_fuzzy_file_fallback(
+            "MessageV2.TextPart",
+            0,
+            1,
+            false,
+            false,
+        ));
+        assert!(should_use_fuzzy_file_fallback(
+            "MessageV2.TextPart",
+            0,
+            0,
+            false,
+            false,
         ));
     }
 
@@ -835,6 +856,37 @@ mod tests {
             collect_literal_file_candidates(&files, "TestClient", true).len(),
             1
         );
+    }
+
+    #[test]
+    fn literal_path_matches_stay_ahead_of_line_results_for_path_like_queries() {
+        let results = order_results(
+            "MessageV2.TextPart",
+            true,
+            vec![LineCandidate {
+                path: "line.ts".into(),
+                line_number: 8,
+                column: 3,
+                line_text: "MessageV2.TextPart".into(),
+            }],
+            vec![FileCandidate {
+                path: "MessageV2.TextPart.ts".into(),
+            }],
+            vec![FileCandidate {
+                path: "MessageV2TextPart.ts".into(),
+            }],
+            5,
+        );
+
+        assert_eq!(results.len(), 2);
+        match &results[0] {
+            SearchHit::File { path, .. } => assert_eq!(path, "MessageV2.TextPart.ts"),
+            other => panic!("unexpected result: {other:?}"),
+        }
+        match &results[1] {
+            SearchHit::File { path, .. } => assert_eq!(path, "MessageV2TextPart.ts"),
+            other => panic!("unexpected result: {other:?}"),
+        }
     }
 
     #[test]
