@@ -9,6 +9,7 @@
 	const statusRoot = document.getElementById('status');
 	const caseToggle = document.getElementById('case-toggle');
 	const regexToggle = document.getElementById('regex-toggle');
+	const modalRoot = document.querySelector('.modal');
 
 	let results = [];
 	let selectedIndex = 0;
@@ -16,6 +17,8 @@
 	let caseSensitive = false;
 	let regexEnabled = false;
 	let debounceTimer;
+	let modalWidth = 0;
+	let modalHeight = 0;
 
 	const savedState = vscode.getState();
 	if (savedState?.query) {
@@ -27,6 +30,12 @@
 	}
 	if (savedState?.regexEnabled) {
 		regexEnabled = true;
+	}
+	if (savedState?.modalWidth && savedState?.modalHeight) {
+		modalWidth = savedState.modalWidth;
+		modalHeight = savedState.modalHeight;
+		modalRoot.style.width = modalWidth + 'px';
+		modalRoot.style.height = modalHeight + 'px';
 	}
 
 	function escapeHtml(value) {
@@ -137,7 +146,12 @@
 	}
 
 	function syncState() {
-		vscode.setState({ query: currentQuery, caseSensitive, regexEnabled });
+		const state = { query: currentQuery, caseSensitive, regexEnabled };
+		if (modalWidth && modalHeight) {
+			state.modalWidth = modalWidth;
+			state.modalHeight = modalHeight;
+		}
+		vscode.setState(state);
 	}
 
 	function updateCaseToggle() {
@@ -398,6 +412,60 @@
 				return;
 		}
 	});
+
+	// Corner resize handles
+	(function initResize() {
+		let active = null;
+
+		document.addEventListener('mousedown', (event) => {
+			const handle = event.target.closest('[data-resize]');
+			if (!handle) {
+				return;
+			}
+			event.preventDefault();
+			const rect = modalRoot.getBoundingClientRect();
+			active = {
+				corner: handle.dataset.resize,
+				startX: event.clientX,
+				startY: event.clientY,
+				startW: rect.width,
+				startH: rect.height
+			};
+		});
+
+		document.addEventListener('mousemove', (event) => {
+			if (!active) {
+				return;
+			}
+			event.preventDefault();
+			const dx = event.clientX - active.startX;
+			const dy = event.clientY - active.startY;
+			let newW = active.startW;
+			let newH = active.startH;
+
+			if (active.corner === 'se') { newW += dx; newH += dy; }
+			else if (active.corner === 'sw') { newW -= dx; newH += dy; }
+			else if (active.corner === 'ne') { newW += dx; newH -= dy; }
+			else if (active.corner === 'nw') { newW -= dx; newH -= dy; }
+
+			newW = Math.max(480, Math.min(newW, window.innerWidth * 0.96));
+			newH = Math.max(400, Math.min(newH, window.innerHeight * 0.92));
+
+			modalRoot.style.width = newW + 'px';
+			modalRoot.style.height = newH + 'px';
+		});
+
+		document.addEventListener('mouseup', () => {
+			if (!active) {
+				return;
+			}
+			const rect = modalRoot.getBoundingClientRect();
+			modalWidth = Math.round(rect.width);
+			modalHeight = Math.round(rect.height);
+			active = null;
+			syncState();
+		});
+	})();
 
 	updateCaseToggle();
 	updateRegexToggle();

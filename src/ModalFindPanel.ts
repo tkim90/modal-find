@@ -272,6 +272,10 @@ export class ModalFindPanel implements vscode.Disposable {
 <body>
 	<div class="shell">
 		<div class="modal">
+			<div class="resize-handle resize-handle-nw" data-resize="nw"></div>
+			<div class="resize-handle resize-handle-ne" data-resize="ne"></div>
+			<div class="resize-handle resize-handle-sw" data-resize="sw"></div>
+			<div class="resize-handle resize-handle-se" data-resize="se"></div>
 			<div class="header">
 				<div class="input-row">
 					<input id="query" class="query" type="text" spellcheck="false" placeholder="Search files and lines..." />
