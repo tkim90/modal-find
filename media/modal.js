@@ -288,15 +288,19 @@
 	}
 
 	function scrollWithin(container, element, mode) {
-		const eTop = element.offsetTop;
-		const eHeight = element.offsetHeight;
-		const cTop = container.scrollTop;
+		const cRect = container.getBoundingClientRect();
+		const eRect = element.getBoundingClientRect();
+		const eTop = eRect.top - cRect.top + container.scrollTop;
+		const eHeight = eRect.height;
 		const cHeight = container.clientHeight;
 
 		if (mode === 'center') {
-			container.scrollTop = eTop - (cHeight / 2) + (eHeight / 2);
+			// Show 5 lines of padding above the match
+			const padding = eHeight * 5;
+			container.scrollTop = Math.max(0, eTop - padding);
 		} else {
 			// nearest
+			const cTop = container.scrollTop;
 			if (eTop < cTop) {
 				container.scrollTop = eTop;
 			} else if (eTop + eHeight > cTop + cHeight) {
