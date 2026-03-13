@@ -7,7 +7,8 @@ type WebviewMessage =
 	| { type: 'ready'; query?: string; caseSensitive?: boolean; regexEnabled?: boolean }
 	| { type: 'close' }
 	| { type: 'queryChanged'; value: string; caseSensitive: boolean; regexEnabled: boolean }
-	| { type: 'openResult'; resultId: string };
+	| { type: 'openResult'; resultId: string }
+	| { type: 'resizeDimensionsChanged'; width: number; height: number };
 
 interface SerializedSearchResult {
 	id: string;
@@ -32,7 +33,7 @@ export class ModalFindPanel implements vscode.Disposable {
 	private lastCaseSensitive = false;
 	private lastRegexEnabled = false;
 
-	public static createOrShow(extensionUri: vscode.Uri): void {
+	public static createOrShow(context: vscode.ExtensionContext): void {
 		if (ModalFindPanel.currentPanel) {
 			ModalFindPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active, false);
 			ModalFindPanel.currentPanel.focusQuery();
@@ -52,16 +53,19 @@ export class ModalFindPanel implements vscode.Disposable {
 			}
 		);
 
-		ModalFindPanel.currentPanel = new ModalFindPanel(panel, extensionUri);
+		ModalFindPanel.currentPanel = new ModalFindPanel(panel, context);
 	}
 
 	public static disposeCurrentPanel(): void {
 		ModalFindPanel.currentPanel?.panel.dispose();
 	}
 
-	private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+	private readonly context: vscode.ExtensionContext;
+
+	private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
 		this.panel = panel;
-		this.searchService = new SearchService(extensionUri);
+		this.context = context;
+		this.searchService = new SearchService(context.extensionUri);
 
 		this.disposables.push(
 			this.searchService,
@@ -80,7 +84,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			})
 		);
 
-		this.panel.webview.html = this.getHtmlForWebview(extensionUri, this.panel.webview);
+		this.panel.webview.html = this.getHtmlForWebview(context.extensionUri, this.panel.webview);
 	}
 
 	public dispose(): void {
@@ -106,16 +110,21 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 
 		switch (message.type) {
-			case 'ready':
+			case 'ready': {
 				this.lastQuery = message.query ?? this.lastQuery;
 				this.lastCaseSensitive = message.caseSensitive ?? this.lastCaseSensitive;
 				this.lastRegexEnabled = message.regexEnabled ?? this.lastRegexEnabled;
+				const dims = this.context.globalState.get<{ width: number; height: number }>('modalDimensions');
+				if (dims) {
+					this.postMessage({ type: 'restoreDimensions', width: dims.width, height: dims.height });
+				}
 				await this.runSearch(
 					this.lastQuery,
 					this.lastCaseSensitive,
 					this.lastRegexEnabled
 				);
 				return;
+			}
 			case 'close':
 				this.panel.dispose();
 				return;
@@ -131,6 +140,12 @@ export class ModalFindPanel implements vscode.Disposable {
 				return;
 			case 'openResult':
 				await this.openResult(message.resultId);
+				return;
+			case 'resizeDimensionsChanged':
+				void this.context.globalState.update('modalDimensions', {
+					width: message.width,
+					height: message.height
+				});
 				return;
 		}
 	}

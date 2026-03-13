@@ -410,6 +410,13 @@
 				results = [];
 				renderAll();
 				return;
+			case 'restoreDimensions':
+				modalWidth = message.width;
+				modalHeight = message.height;
+				modalRoot.style.width = modalWidth + 'px';
+				modalRoot.style.height = modalHeight + 'px';
+				syncState();
+				return;
 		}
 	});
 
@@ -482,6 +489,7 @@
 			modalHeight = Math.round(rect.height);
 			active = null;
 			syncState();
+			vscode.postMessage({ type: 'resizeDimensionsChanged', width: modalWidth, height: modalHeight });
 		});
 	})();
 
