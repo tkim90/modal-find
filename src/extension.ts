@@ -1,15 +1,17 @@
 import * as vscode from 'vscode';
 import { ModalFindPanel } from './ModalFindPanel';
-import { assertBundledSidecarAvailable } from './nativeBinary';
+import { SearchService } from './searchService';
 
 export function activate(context: vscode.ExtensionContext): void {
-	assertBundledSidecarAvailable(context.extensionUri);
+	const searchService = new SearchService(context.extensionUri);
+	ModalFindPanel.warmupAssets(context.extensionUri);
+	void searchService.warmup();
 
 	const openCommand = vscode.commands.registerCommand('modal-find.open', () => {
-		ModalFindPanel.createOrShow(context);
+		ModalFindPanel.createOrShow(context, searchService);
 	});
 
-	context.subscriptions.push(openCommand);
+	context.subscriptions.push(searchService, openCommand);
 }
 
 export function deactivate(): void {

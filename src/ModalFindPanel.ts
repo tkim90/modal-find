@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { SearchResponse, SearchResult } from './searchTypes';
@@ -22,8 +23,20 @@ interface SerializedSearchResult {
 	preview: SearchResult['preview'];
 }
 
+interface ReturnFocusTarget {
+	uri: vscode.Uri;
+	viewColumn?: vscode.ViewColumn;
+	selection?: vscode.Selection;
+}
+
 export class ModalFindPanel implements vscode.Disposable {
 	private static currentPanel: ModalFindPanel | undefined;
+	private static cachedAssets:
+		| {
+				css: string;
+				script: string;
+		  }
+		| undefined;
 	private readonly panel: vscode.WebviewPanel;
 	private readonly searchService: SearchService;
 	private readonly resultMap = new Map<string, SearchResult>();
@@ -33,9 +46,18 @@ export class ModalFindPanel implements vscode.Disposable {
 	private lastQuery = '';
 	private lastCaseSensitive = false;
 	private lastRegexEnabled = false;
+	private returnFocusTarget?: ReturnFocusTarget;
 
-	public static createOrShow(context: vscode.ExtensionContext): void {
+	public static warmupAssets(extensionUri: vscode.Uri): void {
+		void ModalFindPanel.getCachedAssets(extensionUri);
+	}
+
+	public static createOrShow(
+		context: vscode.ExtensionContext,
+		searchService: SearchService
+	): void {
 		if (ModalFindPanel.currentPanel) {
+			ModalFindPanel.currentPanel.captureReturnFocusTarget(vscode.window.activeTextEditor);
 			ModalFindPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active, false);
 			ModalFindPanel.currentPanel.focusQuery();
 			return;
@@ -54,7 +76,12 @@ export class ModalFindPanel implements vscode.Disposable {
 			}
 		);
 
-		ModalFindPanel.currentPanel = new ModalFindPanel(panel, context);
+		ModalFindPanel.currentPanel = new ModalFindPanel(
+			panel,
+			context,
+			searchService,
+			captureReturnFocusTarget(vscode.window.activeTextEditor)
+		);
 	}
 
 	public static disposeCurrentPanel(): void {
@@ -63,19 +90,18 @@ export class ModalFindPanel implements vscode.Disposable {
 
 	private readonly context: vscode.ExtensionContext;
 
-	private constructor(panel: vscode.WebviewPanel, context: vscode.ExtensionContext) {
+	private constructor(
+		panel: vscode.WebviewPanel,
+		context: vscode.ExtensionContext,
+		searchService: SearchService,
+		returnFocusTarget: ReturnFocusTarget | undefined
+	) {
 		this.panel = panel;
 		this.context = context;
-		this.searchService = new SearchService(context.extensionUri);
+		this.searchService = searchService;
+		this.returnFocusTarget = returnFocusTarget;
 
 		this.disposables.push(
-			this.searchService,
-			this.searchService.onDidChange(() => {
-				if (this.disposed) {
-					return;
-				}
-				void this.runSearch(this.lastQuery, this.lastCaseSensitive, this.lastRegexEnabled);
-			}),
 			this.panel.onDidDispose(() => this.dispose()),
 			this.panel.webview.onDidReceiveMessage((message: WebviewMessage) => {
 				if (this.disposed) {
@@ -125,20 +151,22 @@ export class ModalFindPanel implements vscode.Disposable {
 						splitRatio
 					});
 				}
-				await this.runSearch(
-					this.lastQuery,
-					this.lastCaseSensitive,
-					this.lastRegexEnabled
-				);
+				void this.searchService.warmup();
+				this.showIdleState();
 				return;
 			}
 			case 'close':
-				this.panel.dispose();
+				await this.hide();
 				return;
 			case 'queryChanged':
 				this.lastQuery = message.value;
 				this.lastCaseSensitive = message.caseSensitive;
 				this.lastRegexEnabled = message.regexEnabled;
+				if (!message.value.trim()) {
+					this.requestVersion += 1;
+					this.showIdleState();
+					return;
+				}
 				await this.runSearch(
 					message.value,
 					message.caseSensitive,
@@ -232,6 +260,25 @@ export class ModalFindPanel implements vscode.Disposable {
 		});
 	}
 
+	private async hide(): Promise<void> {
+		const focusTarget = this.returnFocusTarget;
+		if (!focusTarget) {
+			this.panel.dispose();
+			return;
+		}
+
+		try {
+			const document = await vscode.workspace.openTextDocument(focusTarget.uri);
+			await vscode.window.showTextDocument(document, {
+				preserveFocus: false,
+				viewColumn: focusTarget.viewColumn,
+				selection: focusTarget.selection
+			});
+		} catch {
+			this.panel.dispose();
+		}
+	}
+
 	private async openResult(resultId: string): Promise<void> {
 		if (this.disposed) {
 			return;
@@ -258,8 +305,6 @@ export class ModalFindPanel implements vscode.Disposable {
 			),
 			vscode.TextEditorRevealType.InCenter
 		);
-
-		this.panel.dispose();
 	}
 
 	private focusQuery(): void {
@@ -268,6 +313,22 @@ export class ModalFindPanel implements vscode.Disposable {
 		}
 
 		this.postMessage({ type: 'focusQuery' });
+	}
+
+	private captureReturnFocusTarget(editor: vscode.TextEditor | undefined): void {
+		const nextTarget = captureReturnFocusTarget(editor);
+		if (nextTarget) {
+			this.returnFocusTarget = nextTarget;
+		}
+	}
+
+	private showIdleState(): void {
+		this.resultMap.clear();
+		this.postMessage({
+			type: 'idle',
+			metaMessage: 'Type to search the workspace.',
+			statusMessage: 'Type to search'
+		});
 	}
 
 	private postMessage(message: unknown): void {
@@ -279,22 +340,21 @@ export class ModalFindPanel implements vscode.Disposable {
 	}
 
 	private getHtmlForWebview(extensionUri: vscode.Uri, webview: vscode.Webview): string {
+		const assets = ModalFindPanel.getCachedAssets(extensionUri);
 		const nonce = getNonce();
 		const cspSource = webview.cspSource;
-		const cssUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'modal.css'));
 		const highlightJsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'highlight.min.js'));
-		const jsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'modal.js'));
 
 		return `<!DOCTYPE html>
 <html lang="en">
 <head>
 	<meta charset="UTF-8" />
-	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src ${cspSource}; script-src 'nonce-${nonce}';" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${cspSource} https: data:; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}';" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 	<title>Modal Find</title>
-	<link rel="stylesheet" href="${cssUri}" />
+	<style nonce="${nonce}">${assets.css}</style>
 </head>
-<body>
+<body data-highlight-src="${highlightJsUri}" data-script-nonce="${nonce}">
 	<div class="shell">
 		<div class="modal">
 			<div class="resize-handle resize-handle-nw" data-resize="nw"></div>
@@ -319,11 +379,36 @@ export class ModalFindPanel implements vscode.Disposable {
 			</div>
 		</div>
 	</div>
-	<script nonce="${nonce}" src="${highlightJsUri}"></script>
-	<script nonce="${nonce}" src="${jsUri}"></script>
+	<script nonce="${nonce}">${assets.script}</script>
 </body>
 </html>`;
 	}
+
+	private static getCachedAssets(extensionUri: vscode.Uri): { css: string; script: string } {
+		if (ModalFindPanel.cachedAssets) {
+			return ModalFindPanel.cachedAssets;
+		}
+
+		const cssPath = vscode.Uri.joinPath(extensionUri, 'media', 'modal.css').fsPath;
+		const scriptPath = vscode.Uri.joinPath(extensionUri, 'media', 'modal.js').fsPath;
+		ModalFindPanel.cachedAssets = {
+			css: escapeInlineTag(fs.readFileSync(cssPath, 'utf8'), 'style'),
+			script: escapeInlineTag(fs.readFileSync(scriptPath, 'utf8'), 'script')
+		};
+		return ModalFindPanel.cachedAssets;
+	}
+}
+
+function captureReturnFocusTarget(editor: vscode.TextEditor | undefined): ReturnFocusTarget | undefined {
+	if (!editor || editor.document.uri.scheme !== 'file') {
+		return undefined;
+	}
+
+	return {
+		uri: editor.document.uri,
+		viewColumn: editor.viewColumn,
+		selection: editor.selection
+	};
 }
 
 function getNonce(): string {
@@ -333,6 +418,11 @@ function getNonce(): string {
 		value += possible.charAt(Math.floor(Math.random() * possible.length));
 	}
 	return value;
+}
+
+function escapeInlineTag(source: string, tagName: 'script' | 'style'): string {
+	const closingTag = new RegExp(`</${tagName}`, 'gi');
+	return source.replace(closingTag, `<\\/${tagName}`);
 }
 
 function getDisplayText(result: SearchResult): string {

@@ -3,14 +3,20 @@
   "displayName": "Modal Find",
   "description": "Global fuzzy search in a WebStorm-style modal for VS Code",
   "version": "0.0.1",
+  "publisher": "tkim90",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tkim90/modal-find"
+  },
   "engines": {
-    "vscode": "^1.85.0"
+    "vscode": "^1.105.0"
   },
   "categories": [
     "Search"
   ],
   "activationEvents": [
-    "onCommand:modal-find.open"
+    "*"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -36,13 +42,15 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "package": "vsce package"
   },
   "devDependencies": {
     "@types/node": "22.x",
-    "@types/vscode": "^1.106.0",
+    "@types/vscode": "1.105.0",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.1",
     "eslint": "^9.39.1",
     "highlight.js": "^11.11.1",
     "typescript": "^5.9.3",

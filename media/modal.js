@@ -11,6 +11,8 @@
 	const regexToggle = document.getElementById('regex-toggle');
 	const modalRoot = document.querySelector('.modal');
 	const splitter = document.getElementById('splitter');
+	const highlightSrc = document.body.dataset.highlightSrc;
+	const scriptNonce = document.body.dataset.scriptNonce;
 
 	let results = [];
 	let selectedIndex = 0;
@@ -24,6 +26,9 @@
 	let lastRenderedResults = null;
 	let pendingPreviewRaf = 0;
 	let pendingHighlightTimer = 0;
+	let pendingResultHighlightRaf = 0;
+	let highlightLoaderPromise = null;
+	let resultHighlightVersion = 0;
 
 	const savedState = vscode.getState();
 	if (savedState?.query) {
@@ -93,6 +98,28 @@
 		} catch {
 			return escapeHtml(text);
 		}
+	}
+
+	function ensureHighlightJs() {
+		if (typeof hljs !== 'undefined') {
+			return Promise.resolve(true);
+		}
+		if (!highlightSrc) {
+			return Promise.resolve(false);
+		}
+		if (!highlightLoaderPromise) {
+			highlightLoaderPromise = new Promise((resolve) => {
+				const script = document.createElement('script');
+				script.src = highlightSrc;
+				if (scriptNonce) {
+					script.nonce = scriptNonce;
+				}
+				script.onload = () => resolve(typeof hljs !== 'undefined');
+				script.onerror = () => resolve(false);
+				document.body.appendChild(script);
+			});
+		}
+		return highlightLoaderPromise;
 	}
 
 	function collectTextSegments(container) {
@@ -239,6 +266,104 @@
 		debounceTimer = setTimeout(() => postQuery(value), 100);
 	}
 
+	function cancelResultHighlightWork() {
+		resultHighlightVersion += 1;
+		if (pendingResultHighlightRaf) {
+			cancelAnimationFrame(pendingResultHighlightRaf);
+			pendingResultHighlightRaf = 0;
+		}
+	}
+
+	function scheduleResultHighlight() {
+		cancelResultHighlightWork();
+
+		const version = resultHighlightVersion;
+		pendingResultHighlightRaf = requestAnimationFrame(() => {
+			pendingResultHighlightRaf = 0;
+			void highlightResultTitles(version);
+		});
+	}
+
+	function highlightResultTitles(version) {
+		const pendingTitles = Array.from(resultsRoot.querySelectorAll('.result-title.is-line'))
+			.filter((element) => element.dataset.syntaxHighlighted !== 'true');
+		if (!pendingTitles.length) {
+			return Promise.resolve();
+		}
+
+		return ensureHighlightJs().then((ready) => {
+			if (!ready || version !== resultHighlightVersion) {
+				return;
+			}
+
+			processResultTitleBatch(prioritizeResultTitles(pendingTitles), 0, version);
+		});
+	}
+
+	function prioritizeResultTitles(titles) {
+		const viewportTop = resultsRoot.scrollTop;
+		const viewportBottom = viewportTop + resultsRoot.clientHeight;
+		const selected = [];
+		const visible = [];
+		const remaining = [];
+		const seen = new Set();
+
+		for (const title of titles) {
+			const index = Number(title.dataset.resultIndex || '-1');
+			const row = title.closest('.result');
+			const top = row ? row.offsetTop : 0;
+			const bottom = row ? top + row.offsetHeight : 0;
+
+			if (index === selectedIndex) {
+				selected.push(title);
+				seen.add(title);
+			}
+			if (bottom >= viewportTop && top <= viewportBottom && !seen.has(title)) {
+				visible.push(title);
+				seen.add(title);
+				continue;
+			}
+			if (!seen.has(title)) {
+				remaining.push(title);
+			}
+		}
+
+		return selected.concat(visible, remaining);
+	}
+
+	function processResultTitleBatch(queue, startIndex, version) {
+		if (version !== resultHighlightVersion) {
+			return;
+		}
+
+		const endIndex = Math.min(startIndex + 12, queue.length);
+		for (let index = startIndex; index < endIndex; index += 1) {
+			highlightResultTitle(queue[index]);
+		}
+
+		if (endIndex >= queue.length) {
+			return;
+		}
+
+		pendingResultHighlightRaf = requestAnimationFrame(() => {
+			pendingResultHighlightRaf = 0;
+			processResultTitleBatch(queue, endIndex, version);
+		});
+	}
+
+	function highlightResultTitle(titleElement) {
+		const rawText = titleElement.dataset.rawText;
+		const language = titleElement.dataset.language;
+		if (!rawText || !language) {
+			titleElement.dataset.syntaxHighlighted = 'true';
+			return;
+		}
+
+		titleElement.innerHTML = syntaxHighlight(rawText, language);
+		addSearchMarks(titleElement);
+		titleElement.dataset.syntaxHighlighted = 'true';
+	}
+
 	function renderResults() {
 		if (!results.length) {
 			resultsRoot.innerHTML = '<div class="empty">No matches yet.<br />Try a shorter query or fewer terms.</div>';
@@ -251,14 +376,13 @@
 			const badgeClass = result.kind === 'line' ? 'is-line' : 'is-file';
 			const titleClass = result.kind === 'line' ? 'is-line' : 'is-file';
 			const displayText = truncate(result.displayText, 120);
-			const titleHtml = result.kind === 'line'
-				? syntaxHighlight(displayText, detectLanguage(result.relativePath))
-				: escapeHtml(displayText);
+			const language = result.kind === 'line' ? detectLanguage(result.relativePath) : '';
+			const titleHtml = escapeHtml(displayText);
 			return `
 				<button class="result ${selectedClass}" data-result-id="${escapeHtml(result.id)}" data-index="${index}">
 					<div class="badge ${badgeClass}">${escapeHtml(result.kind)}</div>
 					<div class="result-main">
-						<div class="result-title ${titleClass}">${titleHtml}</div>
+						<div class="result-title ${titleClass}" data-result-index="${index}" data-raw-text="${escapeHtml(displayText)}" data-language="${escapeHtml(language || '')}">${titleHtml}</div>
 					</div>
 					<div class="result-pos">${escapeHtml(result.metaText)}</div>
 				</button>
@@ -266,6 +390,7 @@
 		}).join('');
 
 		resultsRoot.querySelectorAll('.result-title').forEach(addSearchMarks);
+		scheduleResultHighlight();
 		lastRenderedResults = results;
 	}
 
@@ -309,17 +434,31 @@
 			if (selectedIndex !== snapshot) {
 				return;
 			}
+			const markMatches = () => {
+				previewRoot.querySelectorAll('.code-line.is-match > .code-text').forEach(addSearchMarks);
+			};
 			const language = detectLanguage(selected.relativePath);
-			if (language) {
-				previewRoot.querySelectorAll('.code-text').forEach((el) => {
-					el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
-				});
+			if (!language) {
+				markMatches();
+				return;
 			}
-			previewRoot.querySelectorAll('.code-line.is-match > .code-text').forEach(addSearchMarks);
+
+			void ensureHighlightJs().then((ready) => {
+				if (selectedIndex !== snapshot) {
+					return;
+				}
+				if (ready) {
+					previewRoot.querySelectorAll('.code-text').forEach((el) => {
+						el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
+					});
+				}
+				markMatches();
+			});
 		}, 100);
 	}
 
 	function renderAll() {
+		cancelResultHighlightWork();
 		if (pendingPreviewRaf) {
 			cancelAnimationFrame(pendingPreviewRaf);
 			pendingPreviewRaf = 0;
@@ -535,6 +674,10 @@
 		openSelected();
 	});
 
+	resultsRoot.addEventListener('scroll', () => {
+		scheduleResultHighlight();
+	});
+
 	window.addEventListener('message', (event) => {
 		const message = event.data;
 		switch (message.type) {
@@ -544,6 +687,13 @@
 				return;
 			case 'searching':
 				statusRoot.textContent = message.query ? 'Searching\u2026' : 'Loading index\u2026';
+				return;
+			case 'idle':
+				results = [];
+				selectedIndex = 0;
+				metaRoot.textContent = message.metaMessage || 'Type to search the workspace.';
+				statusRoot.textContent = message.statusMessage || 'Type to search';
+				renderAll();
 				return;
 			case 'results':
 				currentQuery = message.query;
