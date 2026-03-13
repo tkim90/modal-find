@@ -2,7 +2,7 @@
 
 Modal Find is a VS Code extension prototype that remaps `Cmd+Shift+F` / `Ctrl+Shift+F` to a workspace-wide fuzzy search surface inspired by WebStorm's 
 
-<img width="2890" height="1905" alt="CleanShot 2026-03-13 at 15 14 55" src="https://github.com/user-attachments/assets/5599641b-4ffd-4ca9-913d-8f31d91494f2" />
+<img width="2560" height="1268" alt="Modal Find screenshot" src="https://github.com/user-attachments/assets/5599641b-4ffd-4ca9-913d-8f31d91494f2" />
 
 
 

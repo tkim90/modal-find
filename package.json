@@ -15,8 +15,9 @@
   "categories": [
     "Search"
   ],
+  "icon": "icon.png",
   "activationEvents": [
-    "*"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -57,9 +58,10 @@
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "build:native": "node ./scripts/build-native.mjs",
-    "compile:ts": "tsc -p ./",
+    "compile:ts": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --minify --outfile=out/extension.js",
     "compile": "npm run compile:ts && npm run build:native",
-    "watch": "tsc -watch -p ./",
+    "typecheck": "tsc -p ./ --noEmit",
+    "watch": "esbuild src/extension.ts --bundle --platform=node --format=cjs --external:vscode --outfile=out/extension.js --watch",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
@@ -71,6 +73,7 @@
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.27.4",
     "eslint": "^9.39.1",
     "highlight.js": "^11.11.1",
     "typescript": "^5.9.3",

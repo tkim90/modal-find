@@ -10,3 +10,9 @@ fff-core = { git = "https://github.com/dmtrKovalenko/fff.nvim", package = "fff-c
 regex = "1.12"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+opt-level = "s"

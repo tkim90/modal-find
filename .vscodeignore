@@ -6,3 +6,7 @@ eslint.config.mjs
 **/*.map
 native/**
 scripts/**
+dist/native/**/fff-bridge-nodecopy-test
+.github/**
+.claude/**
+*.vsix
