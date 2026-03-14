@@ -12,3 +12,7 @@ dist/native/**/fff-bridge-nodecopy-test
 .github/**
 .claude/**
 *.vsix
+demo.mp4
+hero.png
+README.md
+LICENSE
