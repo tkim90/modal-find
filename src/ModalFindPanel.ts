@@ -361,22 +361,26 @@ export class ModalFindPanel implements vscode.Disposable {
 			return;
 		}
 
-		const document = await vscode.workspace.openTextDocument(result.uri);
-		const editor = await vscode.window.showTextDocument(document, {
-			preview: false,
-			viewColumn: vscode.ViewColumn.Active
-		});
-		const line = Math.max(0, result.lineNumber - 1);
-		const column = Math.max(0, result.column - 1);
-		const position = new vscode.Position(line, column);
-		editor.selection = new vscode.Selection(position, position);
-		editor.revealRange(
-			new vscode.Range(
-				new vscode.Position(Math.max(0, line - 2), 0),
-				new vscode.Position(Math.min(document.lineCount - 1, line + 2), 0)
-			),
-			vscode.TextEditorRevealType.InCenter
-		);
+		try {
+			const document = await vscode.workspace.openTextDocument(result.uri);
+			const editor = await vscode.window.showTextDocument(document, {
+				preview: false,
+				viewColumn: vscode.ViewColumn.Active
+			});
+			const line = Math.max(0, result.lineNumber - 1);
+			const column = Math.max(0, result.column - 1);
+			const position = new vscode.Position(line, column);
+			editor.selection = new vscode.Selection(position, position);
+			editor.revealRange(
+				new vscode.Range(
+					new vscode.Position(Math.max(0, line - 2), 0),
+					new vscode.Position(Math.min(document.lineCount - 1, line + 2), 0)
+				),
+				vscode.TextEditorRevealType.InCenter
+			);
+		} catch {
+			await vscode.commands.executeCommand('vscode.open', result.uri);
+		}
 	}
 
 	private focusQuery(): void {
