@@ -2,7 +2,7 @@
 
 Fast Fuzzy Finder is a VS Code extension prototype that remaps `Cmd+Shift+F` / `Ctrl+Shift+F` to a workspace-wide fuzzy search surface inspired by WebStorm's 
 
-<img width="727" height="360" alt="Fast Fuzzy Finder screenshot" src="hero.png" />
+<img width="1220" height="1200" alt="Fast Fuzzy Finder screenshot" src="hero.png" />
 
 ## Installation
 
