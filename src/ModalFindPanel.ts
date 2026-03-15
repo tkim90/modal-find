@@ -222,6 +222,7 @@ export class ModalFindPanel implements vscode.Disposable {
 				await this.runSearch(
 					message.value,
 					message.caseSensitive,
+					message.wordMatch,
 					message.regexEnabled
 				);
 				return;
@@ -243,6 +244,7 @@ export class ModalFindPanel implements vscode.Disposable {
 	private async runSearch(
 		query: string,
 		caseSensitive = false,
+		wordMatch = false,
 		regexEnabled = false
 	): Promise<void> {
 		if (this.disposed) {
@@ -256,11 +258,22 @@ export class ModalFindPanel implements vscode.Disposable {
 		});
 
 		try {
+			let backendQuery = query;
+			let backendRegex = regexEnabled;
+			if (wordMatch) {
+				const escaped = regexEnabled
+					? query
+					: query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+				backendQuery = '\\b' + escaped + '\\b';
+				backendRegex = true;
+			}
+
 			const response = await this.searchService.search(
-				query,
+				backendQuery,
 				caseSensitive,
-				regexEnabled
+				backendRegex
 			);
+			response.query = query;
 			if (this.disposed || currentVersion !== this.requestVersion) {
 				return;
 			}
