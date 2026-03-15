@@ -544,11 +544,13 @@
 			return;
 		}
 
-		// Phase 1: fast render with plain text (no syntax highlighting)
+		// Render preview with syntax highlighting if hljs is ready, plain text otherwise
+		const language = detectLanguage(selected.relativePath);
+		const canHighlight = !!language && typeof hljs !== 'undefined';
 		const previewLines = selected.preview.map((line) => `
 			<div class="code-line ${line.isMatch ? 'is-match' : ''}">
 				<div class="line-number">${line.lineNumber}</div>
-				<div class="code-text">${escapeHtml(line.text || ' ')}</div>
+				<div class="code-text">${canHighlight ? syntaxHighlight(line.text || ' ', language) : escapeHtml(line.text || ' ')}</div>
 			</div>
 		`).join('');
 
@@ -565,34 +567,38 @@
 			scrollWithin(previewRoot, matchLine as HTMLElement, 'center');
 		}
 
-		// Phase 2: deferred syntax highlighting + search marks after settling
-		const snapshot = selectedIndex;
-		pendingHighlightTimer = setTimeout(() => {
-			pendingHighlightTimer = 0;
-			if (selectedIndex !== snapshot) {
-				return;
-			}
-			const markMatches = () => {
-				previewRoot.querySelectorAll<HTMLElement>('.code-line.is-match > .code-text').forEach(addSearchMarks);
-			};
-			const language = detectLanguage(selected.relativePath);
-			if (!language) {
-				markMatches();
-				return;
-			}
-
-			void ensureHighlightJs().then((ready) => {
+		if (canHighlight) {
+			// Already highlighted synchronously — just add search marks
+			previewRoot.querySelectorAll<HTMLElement>('.code-line.is-match > .code-text').forEach(addSearchMarks);
+		} else {
+			// hljs not loaded yet — defer highlighting
+			const snapshot = selectedIndex;
+			pendingHighlightTimer = setTimeout(() => {
+				pendingHighlightTimer = 0;
 				if (selectedIndex !== snapshot) {
 					return;
 				}
-				if (ready) {
-					previewRoot.querySelectorAll<HTMLElement>('.code-text').forEach((el) => {
-						el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
-					});
+				const markMatches = () => {
+					previewRoot.querySelectorAll<HTMLElement>('.code-line.is-match > .code-text').forEach(addSearchMarks);
+				};
+				if (!language) {
+					markMatches();
+					return;
 				}
-				markMatches();
-			});
-		}, 100);
+
+				void ensureHighlightJs().then((ready) => {
+					if (selectedIndex !== snapshot) {
+						return;
+					}
+					if (ready) {
+						previewRoot.querySelectorAll<HTMLElement>('.code-text').forEach((el) => {
+							el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
+						});
+					}
+					markMatches();
+				});
+			}, 100);
+		}
 	}
 
 	function renderAll(): void {
