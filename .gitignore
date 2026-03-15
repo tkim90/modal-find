@@ -1,9 +1,7 @@
 node_modules
-out
 .vscode-test
 dist
 native/fff-bridge/target
 *.vsix
-media/modal.js
 
 .TODO
