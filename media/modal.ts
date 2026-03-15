@@ -63,6 +63,7 @@
 	const metaRoot = document.getElementById('meta')!;
 	const statusRoot = document.getElementById('status')!;
 	const caseToggle = document.getElementById('case-toggle')!;
+	const wordToggle = document.getElementById('word-toggle')!;
 	const regexToggle = document.getElementById('regex-toggle')!;
 	const modalRoot = document.querySelector('.modal') as HTMLElement;
 	const splitter = document.getElementById('splitter')!;
@@ -73,6 +74,7 @@
 	let selectedIndex = 0;
 	let currentQuery = '';
 	let caseSensitive = false;
+	let wordMatch = false;
 	let regexEnabled = false;
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let modalWidth = 0;
@@ -96,6 +98,9 @@
 	}
 	if (savedState?.caseSensitive) {
 		caseSensitive = true;
+	}
+	if (savedState?.wordMatch) {
+		wordMatch = true;
 	}
 	if (savedState?.regexEnabled) {
 		regexEnabled = true;
@@ -255,15 +260,18 @@
 	}
 
 	function getSearchPattern(): RegExp | null {
-		const key = `${currentQuery}\0${caseSensitive}\0${regexEnabled}`;
+		const key = `${currentQuery}\0${caseSensitive}\0${wordMatch}\0${regexEnabled}`;
 		if (cachedSearchPatternKey === key) {
 			return cachedSearchPattern;
 		}
 		cachedSearchPatternKey = key;
 		try {
-			const source = regexEnabled
+			let source = regexEnabled
 				? currentQuery
 				: currentQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			if (wordMatch) {
+				source = '\\b' + source + '\\b';
+			}
 			const flags = caseSensitive ? 'g' : 'gi';
 			cachedSearchPattern = new RegExp(source, flags);
 		} catch {
@@ -305,7 +313,7 @@
 	}
 
 	function syncState(): void {
-		const state: WebviewPersistedState = { query: currentQuery, caseSensitive, regexEnabled };
+		const state: WebviewPersistedState = { query: currentQuery, caseSensitive, wordMatch, regexEnabled };
 		if (modalWidth && modalHeight) {
 			state.modalWidth = modalWidth;
 			state.modalHeight = modalHeight;
@@ -342,6 +350,11 @@
 		caseToggle.setAttribute('aria-pressed', String(caseSensitive));
 	}
 
+	function updateWordMatchToggle(): void {
+		wordToggle.classList.toggle('is-active', wordMatch);
+		wordToggle.setAttribute('aria-pressed', String(wordMatch));
+	}
+
 	function updateRegexToggle(): void {
 		regexToggle.classList.toggle('is-active', regexEnabled);
 		regexToggle.setAttribute('aria-pressed', String(regexEnabled));
@@ -350,7 +363,7 @@
 	function postQuery(value: string): void {
 		currentQuery = value;
 		syncState();
-		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, regexEnabled });
+		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, wordMatch, regexEnabled });
 	}
 
 	function scheduleQuery(value: string): void {
@@ -469,12 +482,15 @@
 			const titleClass = result.kind === 'line' ? 'is-line' : 'is-file';
 			const displayText = truncate(result.displayText, 120);
 			const language = result.kind === 'line' ? detectLanguage(result.relativePath) : '';
-			const titleHtml = escapeHtml(displayText);
+			const titleHtml = language
+				? syntaxHighlight(displayText, language)
+				: escapeHtml(displayText);
+			const highlighted = language && typeof hljs !== 'undefined' ? 'true' : '';
 			return `
 				<button class="result ${selectedClass}" data-result-id="${escapeHtml(result.id)}" data-index="${index}">
 					<div class="badge ${badgeClass}">${escapeHtml(result.kind)}</div>
 					<div class="result-main">
-						<div class="result-title ${titleClass}" data-result-index="${index}" data-raw-text="${escapeHtml(displayText)}" data-language="${escapeHtml(language || '')}">${titleHtml}</div>
+						<div class="result-title ${titleClass}" data-result-index="${index}" data-raw-text="${escapeHtml(displayText)}" data-language="${escapeHtml(language || '')}" data-syntax-highlighted="${highlighted}">${titleHtml}</div>
 					</div>
 					<div class="result-pos">${escapeHtml(result.metaText)}</div>
 				</button>
@@ -528,11 +544,13 @@
 			return;
 		}
 
-		// Phase 1: fast render with plain text (no syntax highlighting)
+		// Render preview with syntax highlighting if hljs is ready, plain text otherwise
+		const language = detectLanguage(selected.relativePath);
+		const canHighlight = !!language && typeof hljs !== 'undefined';
 		const previewLines = selected.preview.map((line) => `
 			<div class="code-line ${line.isMatch ? 'is-match' : ''}">
 				<div class="line-number">${line.lineNumber}</div>
-				<div class="code-text">${escapeHtml(line.text || ' ')}</div>
+				<div class="code-text">${canHighlight ? syntaxHighlight(line.text || ' ', language) : escapeHtml(line.text || ' ')}</div>
 			</div>
 		`).join('');
 
@@ -549,34 +567,38 @@
 			scrollWithin(previewRoot, matchLine as HTMLElement, 'center');
 		}
 
-		// Phase 2: deferred syntax highlighting + search marks after settling
-		const snapshot = selectedIndex;
-		pendingHighlightTimer = setTimeout(() => {
-			pendingHighlightTimer = 0;
-			if (selectedIndex !== snapshot) {
-				return;
-			}
-			const markMatches = () => {
-				previewRoot.querySelectorAll<HTMLElement>('.code-line.is-match > .code-text').forEach(addSearchMarks);
-			};
-			const language = detectLanguage(selected.relativePath);
-			if (!language) {
-				markMatches();
-				return;
-			}
-
-			void ensureHighlightJs().then((ready) => {
+		if (canHighlight) {
+			// Already highlighted synchronously — just add search marks
+			previewRoot.querySelectorAll<HTMLElement>('.code-line.is-match > .code-text').forEach(addSearchMarks);
+		} else {
+			// hljs not loaded yet — defer highlighting
+			const snapshot = selectedIndex;
+			pendingHighlightTimer = setTimeout(() => {
+				pendingHighlightTimer = 0;
 				if (selectedIndex !== snapshot) {
 					return;
 				}
-				if (ready) {
-					previewRoot.querySelectorAll<HTMLElement>('.code-text').forEach((el) => {
-						el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
-					});
+				const markMatches = () => {
+					previewRoot.querySelectorAll<HTMLElement>('.code-line.is-match > .code-text').forEach(addSearchMarks);
+				};
+				if (!language) {
+					markMatches();
+					return;
 				}
-				markMatches();
-			});
-		}, 100);
+
+				void ensureHighlightJs().then((ready) => {
+					if (selectedIndex !== snapshot) {
+						return;
+					}
+					if (ready) {
+						previewRoot.querySelectorAll<HTMLElement>('.code-text').forEach((el) => {
+							el.innerHTML = syntaxHighlight(el.textContent || ' ', language);
+						});
+					}
+					markMatches();
+				});
+			}, 100);
+		}
 	}
 
 	function renderAll(): void {
@@ -702,6 +724,12 @@
 	caseToggle.addEventListener('click', () => {
 		caseSensitive = !caseSensitive;
 		updateCaseToggle();
+		postQuery(queryInput.value);
+	});
+
+	wordToggle.addEventListener('click', () => {
+		wordMatch = !wordMatch;
+		updateWordMatchToggle();
 		postQuery(queryInput.value);
 	});
 
@@ -832,6 +860,20 @@
 			case 'results':
 				currentQuery = message.query;
 				results = message.results;
+				if (wordMatch && currentQuery) {
+					try {
+						const escaped = regexEnabled
+							? currentQuery
+							: currentQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+						const wordPattern = new RegExp('\\b' + escaped + '\\b', caseSensitive ? '' : 'i');
+						results = results.filter((r) => {
+							const text = r.kind === 'line' ? r.displayText : r.relativePath;
+							return wordPattern.test(text);
+						});
+					} catch {
+						// If regex is invalid, skip filtering
+					}
+				}
 				selectedIndex = 0;
 				metaRoot.textContent = message.meta.searchableFileCount + ' searchable / ' + message.meta.indexedFileCount + ' indexed / ' + message.meta.skippedFileCount + ' path-only';
 				statusRoot.textContent = results.length + ' results in ' + message.meta.durationMs + ' ms';
@@ -1001,6 +1043,7 @@
 	})();
 
 	updateCaseToggle();
+	updateWordMatchToggle();
 	updateRegexToggle();
 	queryInput.focus();
 	queryInput.select();
@@ -1009,6 +1052,7 @@
 	postLifecycle('ready', {
 		hasQuery: Boolean(currentQuery),
 		caseSensitive,
+		wordMatch,
 		regexEnabled
 	});
 	if (!document.hidden) {
@@ -1018,6 +1062,7 @@
 		type: 'ready',
 		query: currentQuery,
 		caseSensitive,
+		wordMatch,
 		regexEnabled
 	});
 })();

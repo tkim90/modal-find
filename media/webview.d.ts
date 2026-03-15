@@ -9,6 +9,7 @@ declare function acquireVsCodeApi(): VsCodeWebviewApi;
 interface WebviewPersistedState {
 	query?: string;
 	caseSensitive?: boolean;
+	wordMatch?: boolean;
 	regexEnabled?: boolean;
 	modalWidth?: number;
 	modalHeight?: number;
