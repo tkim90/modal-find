@@ -63,6 +63,7 @@
 	const metaRoot = document.getElementById('meta')!;
 	const statusRoot = document.getElementById('status')!;
 	const caseToggle = document.getElementById('case-toggle')!;
+	const wordToggle = document.getElementById('word-toggle')!;
 	const regexToggle = document.getElementById('regex-toggle')!;
 	const modalRoot = document.querySelector('.modal') as HTMLElement;
 	const splitter = document.getElementById('splitter')!;
@@ -73,6 +74,7 @@
 	let selectedIndex = 0;
 	let currentQuery = '';
 	let caseSensitive = false;
+	let wordMatch = false;
 	let regexEnabled = false;
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let modalWidth = 0;
@@ -96,6 +98,9 @@
 	}
 	if (savedState?.caseSensitive) {
 		caseSensitive = true;
+	}
+	if (savedState?.wordMatch) {
+		wordMatch = true;
 	}
 	if (savedState?.regexEnabled) {
 		regexEnabled = true;
@@ -255,15 +260,18 @@
 	}
 
 	function getSearchPattern(): RegExp | null {
-		const key = `${currentQuery}\0${caseSensitive}\0${regexEnabled}`;
+		const key = `${currentQuery}\0${caseSensitive}\0${wordMatch}\0${regexEnabled}`;
 		if (cachedSearchPatternKey === key) {
 			return cachedSearchPattern;
 		}
 		cachedSearchPatternKey = key;
 		try {
-			const source = regexEnabled
+			let source = regexEnabled
 				? currentQuery
 				: currentQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			if (wordMatch) {
+				source = '\\b' + source + '\\b';
+			}
 			const flags = caseSensitive ? 'g' : 'gi';
 			cachedSearchPattern = new RegExp(source, flags);
 		} catch {
@@ -305,7 +313,7 @@
 	}
 
 	function syncState(): void {
-		const state: WebviewPersistedState = { query: currentQuery, caseSensitive, regexEnabled };
+		const state: WebviewPersistedState = { query: currentQuery, caseSensitive, wordMatch, regexEnabled };
 		if (modalWidth && modalHeight) {
 			state.modalWidth = modalWidth;
 			state.modalHeight = modalHeight;
@@ -342,6 +350,11 @@
 		caseToggle.setAttribute('aria-pressed', String(caseSensitive));
 	}
 
+	function updateWordMatchToggle(): void {
+		wordToggle.classList.toggle('is-active', wordMatch);
+		wordToggle.setAttribute('aria-pressed', String(wordMatch));
+	}
+
 	function updateRegexToggle(): void {
 		regexToggle.classList.toggle('is-active', regexEnabled);
 		regexToggle.setAttribute('aria-pressed', String(regexEnabled));
@@ -350,7 +363,7 @@
 	function postQuery(value: string): void {
 		currentQuery = value;
 		syncState();
-		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, regexEnabled });
+		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, wordMatch, regexEnabled });
 	}
 
 	function scheduleQuery(value: string): void {
@@ -705,6 +718,12 @@
 		postQuery(queryInput.value);
 	});
 
+	wordToggle.addEventListener('click', () => {
+		wordMatch = !wordMatch;
+		updateWordMatchToggle();
+		postQuery(queryInput.value);
+	});
+
 	regexToggle.addEventListener('click', () => {
 		regexEnabled = !regexEnabled;
 		updateRegexToggle();
@@ -832,6 +851,20 @@
 			case 'results':
 				currentQuery = message.query;
 				results = message.results;
+				if (wordMatch && currentQuery) {
+					try {
+						const escaped = regexEnabled
+							? currentQuery
+							: currentQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+						const wordPattern = new RegExp('\\b' + escaped + '\\b', caseSensitive ? '' : 'i');
+						results = results.filter((r) => {
+							const text = r.kind === 'line' ? r.displayText : r.relativePath;
+							return wordPattern.test(text);
+						});
+					} catch {
+						// If regex is invalid, skip filtering
+					}
+				}
 				selectedIndex = 0;
 				metaRoot.textContent = message.meta.searchableFileCount + ' searchable / ' + message.meta.indexedFileCount + ' indexed / ' + message.meta.skippedFileCount + ' path-only';
 				statusRoot.textContent = results.length + ' results in ' + message.meta.durationMs + ' ms';
@@ -1001,6 +1034,7 @@
 	})();
 
 	updateCaseToggle();
+	updateWordMatchToggle();
 	updateRegexToggle();
 	queryInput.focus();
 	queryInput.select();
@@ -1009,6 +1043,7 @@
 	postLifecycle('ready', {
 		hasQuery: Boolean(currentQuery),
 		caseSensitive,
+		wordMatch,
 		regexEnabled
 	});
 	if (!document.hidden) {
@@ -1018,6 +1053,7 @@
 		type: 'ready',
 		query: currentQuery,
 		caseSensitive,
+		wordMatch,
 		regexEnabled
 	});
 })();

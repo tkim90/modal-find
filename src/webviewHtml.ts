@@ -48,6 +48,7 @@ export function getHtmlForWebview(extensionUri: vscode.Uri, webview: vscode.Webv
 					<input id="query" class="query" type="text" spellcheck="false" placeholder="Search files and lines..." />
 					<div class="input-actions">
 						<button id="case-toggle" class="toolbar-button" type="button" title="Case Sensitive" aria-label="Case Sensitive" aria-pressed="false">Cc</button>
+						<button id="word-toggle" class="toolbar-button" type="button" title="Words" aria-label="Words" aria-pressed="false">W</button>
 						<button id="regex-toggle" class="toolbar-button" type="button" title="Regex" aria-label="Regex" aria-pressed="false">.*</button>
 					</div>
 				</div>

@@ -11,10 +11,10 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 
 type WebviewMessage =
-	| { type: 'ready'; query?: string; caseSensitive?: boolean; regexEnabled?: boolean }
+	| { type: 'ready'; query?: string; caseSensitive?: boolean; wordMatch?: boolean; regexEnabled?: boolean }
 	| { type: 'lifecycleTrace'; event: string; elapsedMs?: number; detail?: Record<string, unknown> }
 	| { type: 'close' }
-	| { type: 'queryChanged'; value: string; caseSensitive: boolean; regexEnabled: boolean }
+	| { type: 'queryChanged'; value: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean }
 	| { type: 'openResult'; resultId: string }
 	| { type: 'resizeDimensionsChanged'; width: number; height: number }
 	| { type: 'splitRatioChanged'; ratio: number };
@@ -36,6 +36,7 @@ export class ModalFindPanel implements vscode.Disposable {
 	private requestVersion = 0;
 	private lastQuery = '';
 	private lastCaseSensitive = false;
+	private lastWordMatch = false;
 	private lastRegexEnabled = false;
 	private returnFocusTarget?: ReturnFocusTarget;
 
@@ -176,10 +177,12 @@ export class ModalFindPanel implements vscode.Disposable {
 					panelId: this.panelId,
 					hasQuery: Boolean(message.query),
 					caseSensitive: message.caseSensitive ?? this.lastCaseSensitive,
+					wordMatch: message.wordMatch ?? this.lastWordMatch,
 					regexEnabled: message.regexEnabled ?? this.lastRegexEnabled
 				});
 				this.lastQuery = message.query ?? this.lastQuery;
 				this.lastCaseSensitive = message.caseSensitive ?? this.lastCaseSensitive;
+				this.lastWordMatch = message.wordMatch ?? this.lastWordMatch;
 				this.lastRegexEnabled = message.regexEnabled ?? this.lastRegexEnabled;
 				const dims = this.context.globalState.get<{ width: number; height: number }>('modalDimensions');
 				const splitRatio = this.context.globalState.get<number>('modalSplitRatio');
@@ -209,6 +212,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			case 'queryChanged':
 				this.lastQuery = message.value;
 				this.lastCaseSensitive = message.caseSensitive;
+				this.lastWordMatch = message.wordMatch;
 				this.lastRegexEnabled = message.regexEnabled;
 				if (!message.value.trim()) {
 					this.requestVersion += 1;
