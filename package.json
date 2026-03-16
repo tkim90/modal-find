@@ -67,6 +67,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test",
+    "test:unit": "esbuild src/searchSettingsCache.test.ts --bundle --platform=node --format=cjs --outfile=out/searchSettingsCache.test.js && node --test out/searchSettingsCache.test.js",
     "package": "vsce package"
   },
   "devDependencies": {
