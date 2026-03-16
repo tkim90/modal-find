@@ -15,7 +15,7 @@ type WebviewMessage =
 	| { type: 'ready'; query?: string; caseSensitive?: boolean; wordMatch?: boolean; regexEnabled?: boolean }
 	| { type: 'lifecycleTrace'; event: string; elapsedMs?: number; detail?: Record<string, unknown> }
 	| { type: 'close' }
-	| { type: 'queryChanged'; value: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean }
+	| { type: 'queryChanged'; value: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean; filtersVisible: boolean; includePattern: string; excludePattern: string }
 	| { type: 'openResult'; resultId: string }
 	| { type: 'resizeDimensionsChanged'; width: number; height: number }
 	| { type: 'splitRatioChanged'; ratio: number };
@@ -39,6 +39,8 @@ export class ModalFindPanel implements vscode.Disposable {
 	private lastCaseSensitive = false;
 	private lastWordMatch = false;
 	private lastRegexEnabled = false;
+	private lastIncludePattern = '';
+	private lastExcludePattern = '';
 	private returnFocusTarget?: ReturnFocusTarget;
 	private initialQuery?: string;
 
@@ -209,17 +211,22 @@ export class ModalFindPanel implements vscode.Disposable {
 				const hasWebviewState = Boolean(message.query) || message.caseSensitive || message.wordMatch || message.regexEnabled;
 				if (!hasWebviewState) {
 					const cached = this.settingsCache.get();
-					if (cached.query || cached.caseSensitive || cached.wordMatch || cached.regexEnabled) {
+					if (cached.query || cached.caseSensitive || cached.wordMatch || cached.regexEnabled || cached.filtersVisible || cached.includePattern || cached.excludePattern) {
 						this.lastQuery = cached.query;
 						this.lastCaseSensitive = cached.caseSensitive;
 						this.lastWordMatch = cached.wordMatch;
 						this.lastRegexEnabled = cached.regexEnabled;
+						this.lastIncludePattern = cached.includePattern;
+						this.lastExcludePattern = cached.excludePattern;
 						this.postMessage({
 							type: 'restoreSearchSettings',
 							query: cached.query,
 							caseSensitive: cached.caseSensitive,
 							wordMatch: cached.wordMatch,
-							regexEnabled: cached.regexEnabled
+							regexEnabled: cached.regexEnabled,
+							filtersVisible: cached.filtersVisible,
+							includePattern: cached.includePattern,
+							excludePattern: cached.excludePattern
 						});
 					}
 				}
@@ -247,11 +254,16 @@ export class ModalFindPanel implements vscode.Disposable {
 				this.lastCaseSensitive = message.caseSensitive;
 				this.lastWordMatch = message.wordMatch;
 				this.lastRegexEnabled = message.regexEnabled;
+				this.lastIncludePattern = message.includePattern;
+				this.lastExcludePattern = message.excludePattern;
 				this.settingsCache.update({
 					query: message.value,
 					caseSensitive: message.caseSensitive,
 					wordMatch: message.wordMatch,
-					regexEnabled: message.regexEnabled
+					regexEnabled: message.regexEnabled,
+					filtersVisible: message.filtersVisible,
+					includePattern: message.includePattern,
+					excludePattern: message.excludePattern
 				});
 				if (!message.value.trim()) {
 					this.requestVersion += 1;
@@ -335,12 +347,17 @@ export class ModalFindPanel implements vscode.Disposable {
 			return;
 		}
 
+		let filtered = response.results;
+		if (this.lastIncludePattern.trim() || this.lastExcludePattern.trim()) {
+			filtered = applyFileFilters(filtered, this.lastIncludePattern, this.lastExcludePattern);
+		}
+
 		this.resultMap.clear();
-		for (const result of response.results) {
+		for (const result of filtered) {
 			this.resultMap.set(result.id, result);
 		}
 
-		const serializedResults: SerializedSearchResult[] = response.results.map((result) => {
+		const serializedResults: SerializedSearchResult[] = filtered.map((result) => {
 			const ext = path.extname(result.relativePath).toLowerCase();
 			return {
 				id: result.id,
@@ -494,4 +511,87 @@ function captureReturnFocusTarget(editor: vscode.TextEditor | undefined): Return
 		viewColumn: editor.viewColumn,
 		selection: editor.selection
 	};
+}
+
+function globToRegex(pattern: string): RegExp | null {
+	pattern = pattern.trim();
+	if (!pattern) {
+		return null;
+	}
+
+	let regex = '';
+	let i = 0;
+	while (i < pattern.length) {
+		const ch = pattern[i];
+		if (ch === '*') {
+			if (pattern[i + 1] === '*') {
+				if (pattern[i + 2] === '/') {
+					regex += '(?:.+/)?';
+					i += 3;
+				} else {
+					regex += '.*';
+					i += 2;
+				}
+			} else {
+				regex += '[^/]*';
+				i += 1;
+			}
+		} else if (ch === '?') {
+			regex += '[^/]';
+			i += 1;
+		} else if (ch === '{') {
+			const close = pattern.indexOf('}', i);
+			if (close !== -1) {
+				const alternatives = pattern.slice(i + 1, close).split(',').map(a => a.trim());
+				regex += '(?:' + alternatives.map(escapeRegexChars).join('|') + ')';
+				i = close + 1;
+			} else {
+				regex += '\\{';
+				i += 1;
+			}
+		} else if ('.+^$|()[]\\'.includes(ch)) {
+			regex += '\\' + ch;
+			i += 1;
+		} else {
+			regex += ch;
+			i += 1;
+		}
+	}
+
+	try {
+		return new RegExp('^(?:.*/)?' + regex + '$', 'i');
+	} catch {
+		return null;
+	}
+}
+
+function escapeRegexChars(text: string): string {
+	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function parsePatterns(input: string): RegExp[] {
+	return input
+		.split(',')
+		.map(p => globToRegex(p))
+		.filter((r): r is RegExp => r !== null);
+}
+
+function applyFileFilters(results: SearchResult[], includeInput: string, excludeInput: string): SearchResult[] {
+	const includePatterns = parsePatterns(includeInput);
+	const excludePatterns = parsePatterns(excludeInput);
+
+	if (!includePatterns.length && !excludePatterns.length) {
+		return results;
+	}
+
+	return results.filter(result => {
+		const filePath = result.relativePath;
+		if (includePatterns.length && !includePatterns.some(p => p.test(filePath))) {
+			return false;
+		}
+		if (excludePatterns.length && excludePatterns.some(p => p.test(filePath))) {
+			return false;
+		}
+		return true;
+	});
 }

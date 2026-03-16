@@ -3,7 +3,6 @@ node_modules
 dist
 native/fff-bridge/target
 *.vsix
-out/
-media/modal.js
+out/*.test.js
 
 .TODO

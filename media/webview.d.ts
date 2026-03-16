@@ -11,6 +11,9 @@ interface WebviewPersistedState {
 	caseSensitive?: boolean;
 	wordMatch?: boolean;
 	regexEnabled?: boolean;
+	filtersVisible?: boolean;
+	includePattern?: string;
+	excludePattern?: string;
 	modalWidth?: number;
 	modalHeight?: number;
 	splitRatio?: number;
@@ -51,7 +54,7 @@ type ExtensionMessage =
 	  }
 	| { type: 'error'; message: string }
 	| { type: 'restoreDimensions'; width?: number; height?: number; splitRatio?: number }
-	| { type: 'restoreSearchSettings'; query: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean };
+	| { type: 'restoreSearchSettings'; query: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean; filtersVisible: boolean; includePattern: string; excludePattern: string };
 
 interface HljsApi {
 	highlight(code: string, options: { language: string; ignoreIllegals?: boolean }): { value: string };
