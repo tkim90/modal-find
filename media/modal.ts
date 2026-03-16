@@ -1097,6 +1097,14 @@
 		});
 	})();
 
+	const isMac = navigator.platform.toUpperCase().includes('MAC') || navigator.userAgent.includes('Macintosh');
+	caseToggle.title = isMac ? 'Case Sensitive (⌥⌘C)' : 'Case Sensitive (Ctrl+Alt+C)';
+	caseToggle.setAttribute('aria-label', caseToggle.title);
+	wordToggle.title = isMac ? 'Words (⌥⌘W)' : 'Words (Ctrl+Alt+W)';
+	wordToggle.setAttribute('aria-label', wordToggle.title);
+	regexToggle.title = isMac ? 'Regex (⌥⌘R)' : 'Regex (Ctrl+Alt+R)';
+	regexToggle.setAttribute('aria-label', regexToggle.title);
+
 	updateCaseToggle();
 	updateWordMatchToggle();
 	updateRegexToggle();
