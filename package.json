@@ -2,7 +2,7 @@
   "name": "fast-fuzzy-finder",
   "displayName": "Fast Fuzzy Finder",
   "description": "IntelliJ-like CMD+Shift+F in Cursor / VSCode.",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "publisher": "TaeKim",
   "license": "MIT",
   "repository": {
