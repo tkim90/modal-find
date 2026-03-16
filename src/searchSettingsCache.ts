@@ -3,13 +3,19 @@ export interface SearchSettings {
 	caseSensitive: boolean;
 	wordMatch: boolean;
 	regexEnabled: boolean;
+	filtersVisible: boolean;
+	includePattern: string;
+	excludePattern: string;
 }
 
 const DEFAULT_SETTINGS: SearchSettings = {
 	query: '',
 	caseSensitive: false,
 	wordMatch: false,
-	regexEnabled: false
+	regexEnabled: false,
+	filtersVisible: false,
+	includePattern: '',
+	excludePattern: ''
 };
 
 export interface SettingsStore {

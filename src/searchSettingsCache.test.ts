@@ -17,7 +17,10 @@ const DEFAULTS: SearchSettings = {
 	query: '',
 	caseSensitive: false,
 	wordMatch: false,
-	regexEnabled: false
+	regexEnabled: false,
+	filtersVisible: false,
+	includePattern: '',
+	excludePattern: ''
 };
 
 describe('SearchSettingsCache', () => {
@@ -48,7 +51,10 @@ describe('SearchSettingsCache', () => {
 			query: 'foo',
 			caseSensitive: true,
 			wordMatch: false,
-			regexEnabled: true
+			regexEnabled: true,
+			filtersVisible: false,
+			includePattern: '',
+			excludePattern: ''
 		});
 	});
 
@@ -59,7 +65,10 @@ describe('SearchSettingsCache', () => {
 			query: 'second',
 			caseSensitive: true,
 			wordMatch: true,
-			regexEnabled: true
+			regexEnabled: true,
+			filtersVisible: false,
+			includePattern: '',
+			excludePattern: ''
 		};
 		cache.update(full);
 		assert.deepStrictEqual(cache.get(), full);

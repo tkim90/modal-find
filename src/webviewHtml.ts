@@ -50,7 +50,12 @@ export function getHtmlForWebview(extensionUri: vscode.Uri, webview: vscode.Webv
 						<button id="case-toggle" class="toolbar-button" type="button" title="Case Sensitive" aria-label="Case Sensitive" aria-pressed="false">Cc</button>
 						<button id="word-toggle" class="toolbar-button" type="button" title="Words" aria-label="Words" aria-pressed="false">W</button>
 						<button id="regex-toggle" class="toolbar-button" type="button" title="Regex" aria-label="Regex" aria-pressed="false">.*</button>
+						<button id="filter-toggle" class="toolbar-button" type="button" title="Filter files" aria-label="Filter files" aria-pressed="false">F</button>
 					</div>
+				</div>
+				<div id="filter-row" class="filter-row" style="display:none">
+					<input id="include-filter" class="filter-input" type="text" spellcheck="false" placeholder="include files (*.ts, src/**/my_file)" />
+					<input id="exclude-filter" class="filter-input" type="text" spellcheck="false" placeholder="exclude files (*.ts, src/**/my_file)" />
 				</div>
 			</div>
 			<div id="results" class="results" tabindex="0"></div>

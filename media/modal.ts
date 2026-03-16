@@ -65,6 +65,10 @@
 	const caseToggle = document.getElementById('case-toggle')!;
 	const wordToggle = document.getElementById('word-toggle')!;
 	const regexToggle = document.getElementById('regex-toggle')!;
+	const filterToggle = document.getElementById('filter-toggle')!;
+	const filterRow = document.getElementById('filter-row')!;
+	const includeFilterInput = document.getElementById('include-filter') as HTMLInputElement;
+	const excludeFilterInput = document.getElementById('exclude-filter') as HTMLInputElement;
 	const modalRoot = document.querySelector('.modal') as HTMLElement;
 	const splitter = document.getElementById('splitter')!;
 	const highlightSrc = document.body.dataset.highlightSrc;
@@ -76,6 +80,9 @@
 	let caseSensitive = false;
 	let wordMatch = false;
 	let regexEnabled = false;
+	let filtersVisible = false;
+	let includePattern = '';
+	let excludePattern = '';
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let modalWidth = 0;
 	let modalHeight = 0;
@@ -104,6 +111,18 @@
 	}
 	if (savedState?.regexEnabled) {
 		regexEnabled = true;
+	}
+	if (savedState?.filtersVisible) {
+		filtersVisible = true;
+		filterRow.style.display = '';
+	}
+	if (savedState?.includePattern) {
+		includePattern = savedState.includePattern;
+		includeFilterInput.value = includePattern;
+	}
+	if (savedState?.excludePattern) {
+		excludePattern = savedState.excludePattern;
+		excludeFilterInput.value = excludePattern;
 	}
 	if (savedState?.modalWidth && savedState?.modalHeight) {
 		modalWidth = savedState.modalWidth;
@@ -313,7 +332,7 @@
 	}
 
 	function syncState(): void {
-		const state: WebviewPersistedState = { query: currentQuery, caseSensitive, wordMatch, regexEnabled };
+		const state: WebviewPersistedState = { query: currentQuery, caseSensitive, wordMatch, regexEnabled, filtersVisible, includePattern, excludePattern };
 		if (modalWidth && modalHeight) {
 			state.modalWidth = modalWidth;
 			state.modalHeight = modalHeight;
@@ -360,10 +379,16 @@
 		regexToggle.setAttribute('aria-pressed', String(regexEnabled));
 	}
 
+	function updateFilterToggle(): void {
+		filterToggle.classList.toggle('is-active', filtersVisible);
+		filterToggle.setAttribute('aria-pressed', String(filtersVisible));
+		filterRow.style.display = filtersVisible ? '' : 'none';
+	}
+
 	function postQuery(value: string): void {
 		currentQuery = value;
 		syncState();
-		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, wordMatch, regexEnabled });
+		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, wordMatch, regexEnabled, includePattern, excludePattern });
 	}
 
 	function scheduleQuery(value: string): void {
@@ -739,6 +764,39 @@
 		postQuery(queryInput.value);
 	});
 
+	filterToggle.addEventListener('click', () => {
+		filtersVisible = !filtersVisible;
+		updateFilterToggle();
+		if (filtersVisible) {
+			includeFilterInput.focus();
+		}
+		syncState();
+	});
+
+	includeFilterInput.addEventListener('input', () => {
+		includePattern = includeFilterInput.value;
+		scheduleQuery(queryInput.value);
+	});
+
+	excludeFilterInput.addEventListener('input', () => {
+		excludePattern = excludeFilterInput.value;
+		scheduleQuery(queryInput.value);
+	});
+
+	includeFilterInput.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			queryInput.focus();
+		}
+	});
+
+	excludeFilterInput.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			queryInput.focus();
+		}
+	});
+
 	queryInput.addEventListener('keydown', (event) => {
 		if (event.key === 'ArrowDown') {
 			event.preventDefault();
@@ -906,9 +964,15 @@
 				caseSensitive = message.caseSensitive;
 				wordMatch = message.wordMatch;
 				regexEnabled = message.regexEnabled;
+				filtersVisible = message.filtersVisible;
+				includePattern = message.includePattern;
+				excludePattern = message.excludePattern;
+				includeFilterInput.value = includePattern;
+				excludeFilterInput.value = excludePattern;
 				updateCaseToggle();
 				updateWordMatchToggle();
 				updateRegexToggle();
+				updateFilterToggle();
 				syncState();
 				if (currentQuery) {
 					postQuery(currentQuery);
@@ -1063,6 +1127,7 @@
 	updateCaseToggle();
 	updateWordMatchToggle();
 	updateRegexToggle();
+	updateFilterToggle();
 	queryInput.focus();
 	queryInput.select();
 	renderAll();
