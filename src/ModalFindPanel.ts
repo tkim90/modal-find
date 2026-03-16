@@ -15,7 +15,7 @@ type WebviewMessage =
 	| { type: 'ready'; query?: string; caseSensitive?: boolean; wordMatch?: boolean; regexEnabled?: boolean }
 	| { type: 'lifecycleTrace'; event: string; elapsedMs?: number; detail?: Record<string, unknown> }
 	| { type: 'close' }
-	| { type: 'queryChanged'; value: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean; includePattern: string; excludePattern: string }
+	| { type: 'queryChanged'; value: string; caseSensitive: boolean; wordMatch: boolean; regexEnabled: boolean; filtersVisible: boolean; includePattern: string; excludePattern: string }
 	| { type: 'openResult'; resultId: string }
 	| { type: 'resizeDimensionsChanged'; width: number; height: number }
 	| { type: 'splitRatioChanged'; ratio: number };
@@ -261,6 +261,7 @@ export class ModalFindPanel implements vscode.Disposable {
 					caseSensitive: message.caseSensitive,
 					wordMatch: message.wordMatch,
 					regexEnabled: message.regexEnabled,
+					filtersVisible: message.filtersVisible,
 					includePattern: message.includePattern,
 					excludePattern: message.excludePattern
 				});

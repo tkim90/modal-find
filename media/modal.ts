@@ -388,7 +388,7 @@
 	function postQuery(value: string): void {
 		currentQuery = value;
 		syncState();
-		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, wordMatch, regexEnabled, includePattern, excludePattern });
+		vscode.postMessage({ type: 'queryChanged', value, caseSensitive, wordMatch, regexEnabled, filtersVisible, includePattern, excludePattern });
 	}
 
 	function scheduleQuery(value: string): void {
@@ -770,7 +770,7 @@
 		if (filtersVisible) {
 			includeFilterInput.focus();
 		}
-		syncState();
+		postQuery(queryInput.value);
 	});
 
 	includeFilterInput.addEventListener('input', () => {
