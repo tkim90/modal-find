@@ -762,30 +762,6 @@
 	});
 
 	document.addEventListener('keydown', (event) => {
-		if (event.altKey && (event.metaKey || event.ctrlKey)) {
-			const code = event.code;
-			if (code === 'KeyC') {
-				event.preventDefault();
-				caseSensitive = !caseSensitive;
-				updateCaseToggle();
-				postQuery(queryInput.value);
-				return;
-			}
-			if (code === 'KeyW') {
-				event.preventDefault();
-				wordMatch = !wordMatch;
-				updateWordMatchToggle();
-				postQuery(queryInput.value);
-				return;
-			}
-			if (code === 'KeyR') {
-				event.preventDefault();
-				regexEnabled = !regexEnabled;
-				updateRegexToggle();
-				postQuery(queryInput.value);
-				return;
-			}
-		}
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
 			event.preventDefault();
 			queryInput.focus();

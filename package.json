@@ -48,20 +48,17 @@
       {
         "command": "fast-fuzzy-finder.toggleCaseSensitive",
         "key": "ctrl+alt+c",
-        "mac": "alt+cmd+c",
-        "when": "activeWebviewPanelId == 'fast-fuzzy-finder.search'"
+        "mac": "alt+cmd+c"
       },
       {
         "command": "fast-fuzzy-finder.toggleWordMatch",
         "key": "ctrl+alt+w",
-        "mac": "alt+cmd+w",
-        "when": "activeWebviewPanelId == 'fast-fuzzy-finder.search'"
+        "mac": "alt+cmd+w"
       },
       {
         "command": "fast-fuzzy-finder.toggleRegex",
         "key": "ctrl+alt+r",
-        "mac": "alt+cmd+r",
-        "when": "activeWebviewPanelId == 'fast-fuzzy-finder.search'"
+        "mac": "alt+cmd+r"
       }
     ],
     "configuration": {
