@@ -42,14 +42,17 @@ Through .vsix file
 2. Download .vsix file
 3. In VSCode: cmd+shift+p "Extensions: Install from VSIX..."
 
-## What it does
+## Features
 
-- Sub 10ms fuzzy search powered by [fff.nvim](https://github.com/dmtrKovalenko/fff.nvim)
-- Opens a dedicated search panel on `Cmd+Shift+F` / `Ctrl+Shift+F`
-- Fuzzy-matches file paths
-- Scans indexed text files for line matches
-- Shows a bottom preview pane with surrounding context
-- Opens the selected result on `Enter` or double-click
+- **Sub-10ms fuzzy search** — Rust-powered backend delivers instant results as you type
+- **Find files and content in one place** — Search file paths and text content simultaneously with <kbd>Cmd+Shift+F</kbd> / <kbd>Ctrl+Shift+F</kbd>
+- **Case, Word & Regex matching** — Toggle case sensitivity (<kbd>Cmd+Alt+C</kbd>), whole-word match (<kbd>Cmd+Alt+W</kbd>), or full regex (<kbd>Cmd+Alt+R</kbd>) on the fly
+- **Include / Exclude file filters** — Narrow results with glob patterns (<kbd>Cmd+Alt+F</kbd>) — e.g. `*.ts`, `src/**/components`
+- **Live preview with syntax highlighting** — Bottom pane shows surrounding context with highlighting for 30+ languages
+- **Image preview** — Preview PNGs, JPGs, SVGs, and more right in the search modal
+- **Remembers everything** — Your query, modifiers, filters, and modal size persist across sessions
+- **Resizable modal** — Drag corners and the split handle to fit your workflow
+- **Cross-platform** — Native performance on macOS (Intel & Apple Silicon), Linux, and Windows
 
 ## Current limitations
 
