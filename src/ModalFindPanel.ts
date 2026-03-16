@@ -356,6 +356,11 @@ export class ModalFindPanel implements vscode.Disposable {
 			filtered = applyFileFilters(filtered, this.lastIncludePattern, this.lastExcludePattern);
 		}
 
+		filtered.sort((a, b) => {
+			if (a.kind === b.kind) { return 0; }
+			return a.kind === 'line' ? -1 : 1;
+		});
+
 		this.resultMap.clear();
 		for (const result of filtered) {
 			this.resultMap.set(result.id, result);
