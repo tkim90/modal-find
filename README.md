@@ -32,8 +32,7 @@
 </p>
 
 
-![CleanShot 2026-03-15 at 23 46 56](https://github.com/user-attachments/assets/fc1261b7-b42e-4629-99a4-8c2cd9753413)
-
+<video src="https://github.com/user-attachments/assets/81e8f2de-2b96-4e06-b694-a832236f6475" autoplay loop muted playsinline></video>
 
 ---
 
