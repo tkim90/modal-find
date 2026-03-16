@@ -31,7 +31,17 @@ export function activate(context: vscode.ExtensionContext): void {
 		ModalFindPanel.createOrShow(context, searchService, settingsCache, selectedText);
 	});
 
-	context.subscriptions.push(searchService, openCommand, { dispose: disposeDebugResources });
+	const toggleCaseCommand = vscode.commands.registerCommand('fast-fuzzy-finder.toggleCaseSensitive', () => {
+		ModalFindPanel.toggleSearchOption('caseSensitive');
+	});
+	const toggleWordCommand = vscode.commands.registerCommand('fast-fuzzy-finder.toggleWordMatch', () => {
+		ModalFindPanel.toggleSearchOption('wordMatch');
+	});
+	const toggleRegexCommand = vscode.commands.registerCommand('fast-fuzzy-finder.toggleRegex', () => {
+		ModalFindPanel.toggleSearchOption('regexEnabled');
+	});
+
+	context.subscriptions.push(searchService, openCommand, toggleCaseCommand, toggleWordCommand, toggleRegexCommand, { dispose: disposeDebugResources });
 	traceLifecycle('extension.activate.end');
 }
 

@@ -762,6 +762,30 @@
 	});
 
 	document.addEventListener('keydown', (event) => {
+		if (event.altKey && (event.metaKey || event.ctrlKey)) {
+			const key = event.key.toLowerCase();
+			if (key === 'c') {
+				event.preventDefault();
+				caseSensitive = !caseSensitive;
+				updateCaseToggle();
+				postQuery(queryInput.value);
+				return;
+			}
+			if (key === 'w') {
+				event.preventDefault();
+				wordMatch = !wordMatch;
+				updateWordMatchToggle();
+				postQuery(queryInput.value);
+				return;
+			}
+			if (key === 'r') {
+				event.preventDefault();
+				regexEnabled = !regexEnabled;
+				updateRegexToggle();
+				postQuery(queryInput.value);
+				return;
+			}
+		}
 		if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
 			event.preventDefault();
 			queryInput.focus();
@@ -913,6 +937,19 @@
 				if (currentQuery) {
 					postQuery(currentQuery);
 				}
+				return;
+			case 'toggleSearchOption':
+				if (message.option === 'caseSensitive') {
+					caseSensitive = !caseSensitive;
+					updateCaseToggle();
+				} else if (message.option === 'wordMatch') {
+					wordMatch = !wordMatch;
+					updateWordMatchToggle();
+				} else if (message.option === 'regexEnabled') {
+					regexEnabled = !regexEnabled;
+					updateRegexToggle();
+				}
+				postQuery(queryInput.value);
 				return;
 		}
 	});

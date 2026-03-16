@@ -100,6 +100,10 @@ export class ModalFindPanel implements vscode.Disposable {
 		ModalFindPanel.currentPanel?.panel.dispose();
 	}
 
+	public static toggleSearchOption(option: 'caseSensitive' | 'wordMatch' | 'regexEnabled'): void {
+		ModalFindPanel.currentPanel?.postMessage({ type: 'toggleSearchOption', option });
+	}
+
 	private readonly context: vscode.ExtensionContext;
 	private readonly panelId: number;
 
