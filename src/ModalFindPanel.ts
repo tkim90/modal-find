@@ -29,6 +29,7 @@ interface ReturnFocusTarget {
 export class ModalFindPanel implements vscode.Disposable {
 	private static currentPanel: ModalFindPanel | undefined;
 	private static nextPanelId = 1;
+	private static lastAppliedSelectedText: string | undefined;
 	private readonly panel: vscode.WebviewPanel;
 	private readonly searchService: SearchService;
 	private readonly resultMap = new Map<string, SearchResult>();
@@ -54,6 +55,13 @@ export class ModalFindPanel implements vscode.Disposable {
 		settingsCache: SearchSettingsCache,
 		initialQuery?: string
 	): void {
+		// Skip selected text if it's the same as what was already applied,
+		// to prevent restored editor selections from overriding newer typed queries
+		const effectiveQuery = initialQuery !== undefined && initialQuery !== ModalFindPanel.lastAppliedSelectedText
+			? initialQuery
+			: undefined;
+		ModalFindPanel.lastAppliedSelectedText = initialQuery;
+
 		if (ModalFindPanel.currentPanel) {
 			traceLifecycle('panel.reveal.requested', {
 				panelId: ModalFindPanel.currentPanel.panelId,
@@ -62,7 +70,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			});
 			ModalFindPanel.currentPanel.captureReturnFocusTarget(vscode.window.activeTextEditor);
 			ModalFindPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active, false);
-			ModalFindPanel.currentPanel.focusQuery(initialQuery);
+			ModalFindPanel.currentPanel.focusQuery(effectiveQuery);
 			return;
 		}
 
@@ -94,7 +102,7 @@ export class ModalFindPanel implements vscode.Disposable {
 			settingsCache,
 			captureReturnFocusTarget(vscode.window.activeTextEditor),
 			panelId,
-			initialQuery
+			effectiveQuery
 		);
 	}
 
