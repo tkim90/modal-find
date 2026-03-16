@@ -4,5 +4,6 @@ dist
 native/fff-bridge/target
 *.vsix
 out/*.test.js
+out/extension.js
 
 .TODO
