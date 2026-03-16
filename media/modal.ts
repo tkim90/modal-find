@@ -906,6 +906,9 @@
 				updateWordMatchToggle();
 				updateRegexToggle();
 				syncState();
+				if (currentQuery) {
+					postQuery(currentQuery);
+				}
 				return;
 		}
 	});
