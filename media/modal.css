@@ -10,8 +10,8 @@ html, body {
 	margin: 0;
 	padding: 0;
 	height: 100%;
-	background: #111111;
-	color: #e6e6e6;
+	background: var(--vscode-editor-background, #111111);
+	color: var(--vscode-foreground, #e6e6e6);
 	font-family: var(--vscode-font-family);
 }
 
@@ -36,8 +36,8 @@ body {
 	max-height: 92vh;
 	display: grid;
 	grid-template-rows: auto minmax(80px, 0.8fr) 5px minmax(80px, 1.2fr) auto;
-	background: #171717;
-	border: 1px solid #2b2b2b;
+	background: var(--vscode-sideBar-background, #171717);
+	border: 1px solid var(--vscode-panel-border, #2b2b2b);
 	border-radius: 0;
 	box-shadow: none;
 	overflow: hidden;
@@ -57,8 +57,8 @@ body {
 
 .header {
 	padding: 18px 18px 14px;
-	border-bottom: 1px solid #2b2b2b;
-	background: #171717;
+	border-bottom: 1px solid var(--vscode-panel-border, #2b2b2b);
+	background: var(--vscode-sideBar-background, #171717);
 }
 
 .input-row {
@@ -76,9 +76,9 @@ body {
 
 .query {
 	width: 100%;
-	border: 1px solid #313131;
-	background: #111111;
-	color: #f2f2f2;
+	border: 1px solid var(--vscode-input-border, #313131);
+	background: var(--vscode-input-background, var(--vscode-editor-background, #111111));
+	color: var(--vscode-input-foreground, #f2f2f2);
 	padding: 10px 10px;
 	border-radius: 0;
 	font-size: 16px;
@@ -93,10 +93,10 @@ body {
 .toolbar-button {
 	width: 42px;
 	height: 42px;
-	border: 1px solid #3a3a3a;
+	border: 1px solid var(--vscode-widget-border, #3a3a3a);
 	border-radius: 0;
-	background: #111111;
-	color: #9f9f9f;
+	background: var(--vscode-editor-background, #111111);
+	color: var(--vscode-descriptionForeground, #9f9f9f);
 	font-size: 13px;
 	font-weight: 600;
 	letter-spacing: 0.04em;
@@ -105,14 +105,14 @@ body {
 }
 
 .toolbar-button:hover {
-	background: #1b1b1b;
-	color: #d8d8d8;
+	background: var(--vscode-toolbar-hoverBackground, #1b1b1b);
+	color: var(--vscode-foreground, #d8d8d8);
 }
 
 .toolbar-button.is-active {
-	background: #202734;
-	border-color: #4b6a96;
-	color: #d7e7ff;
+	background: var(--vscode-button-background, #202734);
+	border-color: var(--vscode-button-background, #4b6a96);
+	color: var(--vscode-button-foreground, #d7e7ff);
 }
 
 .toolbar-button:focus-visible {
@@ -124,7 +124,7 @@ body {
 .results {
 	overflow: auto;
 	padding: 8px;
-	background: #171717;
+	background: var(--vscode-sideBar-background, #171717);
 	outline: none;
 }
 
@@ -148,12 +148,12 @@ body {
 }
 
 .result:hover {
-	background: #1f1f1f;
+	background: var(--vscode-list-hoverBackground, #1f1f1f);
 }
 
 .result.is-selected {
-	background: #232323;
-	border-color: #3a3a3a;
+	background: var(--vscode-list-activeSelectionBackground, #232323);
+	border-color: var(--vscode-widget-border, #3a3a3a);
 }
 
 .badge {
@@ -163,21 +163,21 @@ body {
 	text-transform: uppercase;
 	padding: 6px 8px;
 	border-radius: 0;
-	background: rgba(53, 53, 53, 0.55);
-	color: #cfcfcf;
-	border: 1px solid rgba(110, 110, 110, 0.35);
+	background: var(--vscode-badge-background, rgba(53, 53, 53, 0.55));
+	color: var(--vscode-badge-foreground, #cfcfcf);
+	border: 1px solid var(--vscode-widget-border, rgba(110, 110, 110, 0.35));
 }
 
 .badge.is-line {
-	background: rgba(34, 58, 94, 0.58);
-	color: #bfd6ff;
-	border-color: rgba(77, 117, 187, 0.4);
+	background: color-mix(in srgb, var(--vscode-textLink-foreground, #569cd6) 20%, transparent);
+	color: var(--vscode-textLink-foreground, #bfd6ff);
+	border-color: color-mix(in srgb, var(--vscode-textLink-foreground, #569cd6) 30%, transparent);
 }
 
 .badge.is-file {
-	background: rgba(34, 74, 52, 0.58);
-	color: #c7efd2;
-	border-color: rgba(89, 157, 115, 0.4);
+	background: color-mix(in srgb, var(--vscode-testing-iconPassed, #59a35f) 20%, transparent);
+	color: var(--vscode-testing-iconPassed, #c7efd2);
+	border-color: color-mix(in srgb, var(--vscode-testing-iconPassed, #59a35f) 30%, transparent);
 }
 
 .result-main {
@@ -193,30 +193,30 @@ body {
 }
 
 .result-title.is-file {
-	color: #d9d9d9;
+	color: var(--vscode-foreground, #d9d9d9);
 }
 
 .result-pos {
 	font-size: 12px;
-	color: #9d9d9d;
+	color: var(--vscode-descriptionForeground, #9d9d9d);
 	white-space: nowrap;
 	text-align: right;
 	align-self: center;
 }
 
 .splitter {
-	background: #2b2b2b;
+	background: var(--vscode-panel-border, #2b2b2b);
 	cursor: row-resize;
 }
 
 .splitter:hover {
-	background: #3a3a3a;
+	background: var(--vscode-widget-border, #3a3a3a);
 }
 
 .preview {
 	padding: 14px 18px 18px;
 	overflow: auto;
-	background: #111111;
+	background: var(--vscode-editor-background, #111111);
 	font-family: var(--vscode-editor-font-family, var(--vscode-font-family));
 	font-size: 13px;
 	line-height: 1.6;
@@ -228,7 +228,7 @@ body {
 	gap: 16px;
 	align-items: center;
 	margin-bottom: 10px;
-	color: #8d8d8d;
+	color: var(--vscode-descriptionForeground, #8d8d8d);
 	font-size: 12px;
 }
 
@@ -248,12 +248,12 @@ body {
 }
 
 .code-line.is-match {
-	background: #1f1f1f;
+	background: var(--vscode-list-hoverBackground, #1f1f1f);
 }
 
 .line-number {
 	text-align: right;
-	color: #6d6d6d;
+	color: var(--vscode-editorLineNumber-foreground, #6d6d6d);
 	user-select: none;
 }
 
@@ -262,61 +262,200 @@ body {
 	justify-content: space-between;
 	align-items: center;
 	padding: 12px 18px 16px;
-	border-top: 1px solid #2b2b2b;
-	color: #8d8d8d;
+	border-top: 1px solid var(--vscode-panel-border, #2b2b2b);
+	color: var(--vscode-descriptionForeground, #8d8d8d);
 	font-size: 12px;
-	background: #171717;
+	background: var(--vscode-sideBar-background, #171717);
 }
 
 mark {
-	background: #BA9752;
-	color: #000000;
+	background: var(--vscode-editor-findMatchHighlightBackground, #BA9752);
+	color: var(--vscode-editor-foreground, #000000);
 	border-radius: 2px;
-	padding: 4 1px;
+	padding: 4px 1px;
 }
 
 mark * {
-	color: #000000 !important;
+	color: var(--vscode-editor-foreground, #000000) !important;
 }
 
-/* highlight.js token colors — VS Code Dark+ inspired */
-.hljs-keyword,
-.hljs-selector-tag { color: #c586c0; }
-.hljs-built_in { color: #4ec9b0; }
-.hljs-type,
-.hljs-selector-class { color: #4ec9b0; }
-.hljs-string,
-.hljs-selector-attr,
-.hljs-selector-pseudo { color: #ce9178; }
-.hljs-number,
-.hljs-literal { color: #b5cea8; }
-.hljs-comment,
-.hljs-quote { color: #6a9955; font-style: italic; }
-.hljs-doctag { color: #608b4e; }
-.hljs-variable,
-.hljs-template-variable { color: #9cdcfe; }
-.hljs-title,
-.hljs-title.function_ { color: #dcdcaa; }
-.hljs-title.class_ { color: #4ec9b0; }
-.hljs-attr { color: #9cdcfe; }
-.hljs-attribute { color: #9cdcfe; }
-.hljs-regexp { color: #d16969; }
-.hljs-meta { color: #569cd6; }
-.hljs-meta .hljs-keyword { color: #569cd6; }
-.hljs-meta .hljs-string { color: #ce9178; }
-.hljs-tag { color: #808080; }
-.hljs-name { color: #569cd6; }
-.hljs-symbol { color: #b5cea8; }
-.hljs-params { color: #9cdcfe; }
-.hljs-property { color: #9cdcfe; }
-.hljs-subst { color: #d4d4d4; }
-.hljs-operator { color: #d4d4d4; }
-.hljs-punctuation { color: #d4d4d4; }
-.hljs-addition { color: #b5cea8; background: rgba(34, 74, 52, 0.3); }
-.hljs-deletion { color: #ce9178; background: rgba(94, 34, 34, 0.3); }
-.hljs-section { color: #569cd6; }
-.hljs-emphasis { font-style: italic; }
-.hljs-strong { font-weight: bold; }
+/* highlight.js token colors — VS Code Dark+ */
+body.vscode-dark .hljs-keyword,
+body.vscode-dark .hljs-selector-tag { color: #c586c0; }
+body.vscode-dark .hljs-built_in { color: #4ec9b0; }
+body.vscode-dark .hljs-type,
+body.vscode-dark .hljs-selector-class { color: #4ec9b0; }
+body.vscode-dark .hljs-string,
+body.vscode-dark .hljs-selector-attr,
+body.vscode-dark .hljs-selector-pseudo { color: #ce9178; }
+body.vscode-dark .hljs-number,
+body.vscode-dark .hljs-literal { color: #b5cea8; }
+body.vscode-dark .hljs-comment,
+body.vscode-dark .hljs-quote { color: #6a9955; font-style: italic; }
+body.vscode-dark .hljs-doctag { color: #608b4e; }
+body.vscode-dark .hljs-variable,
+body.vscode-dark .hljs-template-variable { color: #9cdcfe; }
+body.vscode-dark .hljs-title,
+body.vscode-dark .hljs-title.function_ { color: #dcdcaa; }
+body.vscode-dark .hljs-title.class_ { color: #4ec9b0; }
+body.vscode-dark .hljs-attr { color: #9cdcfe; }
+body.vscode-dark .hljs-attribute { color: #9cdcfe; }
+body.vscode-dark .hljs-regexp { color: #d16969; }
+body.vscode-dark .hljs-meta { color: #569cd6; }
+body.vscode-dark .hljs-meta .hljs-keyword { color: #569cd6; }
+body.vscode-dark .hljs-meta .hljs-string { color: #ce9178; }
+body.vscode-dark .hljs-tag { color: #808080; }
+body.vscode-dark .hljs-name { color: #569cd6; }
+body.vscode-dark .hljs-symbol { color: #b5cea8; }
+body.vscode-dark .hljs-params { color: #9cdcfe; }
+body.vscode-dark .hljs-property { color: #9cdcfe; }
+body.vscode-dark .hljs-subst { color: #d4d4d4; }
+body.vscode-dark .hljs-operator { color: #d4d4d4; }
+body.vscode-dark .hljs-punctuation { color: #d4d4d4; }
+body.vscode-dark .hljs-addition { color: #b5cea8; background: rgba(34, 74, 52, 0.3); }
+body.vscode-dark .hljs-deletion { color: #ce9178; background: rgba(94, 34, 34, 0.3); }
+body.vscode-dark .hljs-section { color: #569cd6; }
+body.vscode-dark .hljs-emphasis { font-style: italic; }
+body.vscode-dark .hljs-strong { font-weight: bold; }
+
+/* highlight.js token colors — VS Code Light+ */
+body.vscode-light .hljs-keyword,
+body.vscode-light .hljs-selector-tag { color: #af00db; }
+body.vscode-light .hljs-built_in { color: #267f99; }
+body.vscode-light .hljs-type,
+body.vscode-light .hljs-selector-class { color: #267f99; }
+body.vscode-light .hljs-string,
+body.vscode-light .hljs-selector-attr,
+body.vscode-light .hljs-selector-pseudo { color: #a31515; }
+body.vscode-light .hljs-number,
+body.vscode-light .hljs-literal { color: #098658; }
+body.vscode-light .hljs-comment,
+body.vscode-light .hljs-quote { color: #008000; font-style: italic; }
+body.vscode-light .hljs-doctag { color: #008000; }
+body.vscode-light .hljs-variable,
+body.vscode-light .hljs-template-variable { color: #001080; }
+body.vscode-light .hljs-title,
+body.vscode-light .hljs-title.function_ { color: #795e26; }
+body.vscode-light .hljs-title.class_ { color: #267f99; }
+body.vscode-light .hljs-attr { color: #001080; }
+body.vscode-light .hljs-attribute { color: #001080; }
+body.vscode-light .hljs-regexp { color: #811f3f; }
+body.vscode-light .hljs-meta { color: #0000ff; }
+body.vscode-light .hljs-meta .hljs-keyword { color: #0000ff; }
+body.vscode-light .hljs-meta .hljs-string { color: #a31515; }
+body.vscode-light .hljs-tag { color: #800000; }
+body.vscode-light .hljs-name { color: #0000ff; }
+body.vscode-light .hljs-symbol { color: #098658; }
+body.vscode-light .hljs-params { color: #001080; }
+body.vscode-light .hljs-property { color: #001080; }
+body.vscode-light .hljs-subst { color: #000000; }
+body.vscode-light .hljs-operator { color: #000000; }
+body.vscode-light .hljs-punctuation { color: #000000; }
+body.vscode-light .hljs-addition { color: #098658; background: rgba(34, 139, 34, 0.1); }
+body.vscode-light .hljs-deletion { color: #a31515; background: rgba(255, 0, 0, 0.1); }
+body.vscode-light .hljs-section { color: #0000ff; }
+body.vscode-light .hljs-emphasis { font-style: italic; }
+body.vscode-light .hljs-strong { font-weight: bold; }
+
+/* High contrast dark — reuse dark syntax colors */
+body.vscode-high-contrast .hljs-keyword,
+body.vscode-high-contrast .hljs-selector-tag { color: #c586c0; }
+body.vscode-high-contrast .hljs-built_in { color: #4ec9b0; }
+body.vscode-high-contrast .hljs-type,
+body.vscode-high-contrast .hljs-selector-class { color: #4ec9b0; }
+body.vscode-high-contrast .hljs-string,
+body.vscode-high-contrast .hljs-selector-attr,
+body.vscode-high-contrast .hljs-selector-pseudo { color: #ce9178; }
+body.vscode-high-contrast .hljs-number,
+body.vscode-high-contrast .hljs-literal { color: #b5cea8; }
+body.vscode-high-contrast .hljs-comment,
+body.vscode-high-contrast .hljs-quote { color: #6a9955; font-style: italic; }
+body.vscode-high-contrast .hljs-doctag { color: #608b4e; }
+body.vscode-high-contrast .hljs-variable,
+body.vscode-high-contrast .hljs-template-variable { color: #9cdcfe; }
+body.vscode-high-contrast .hljs-title,
+body.vscode-high-contrast .hljs-title.function_ { color: #dcdcaa; }
+body.vscode-high-contrast .hljs-title.class_ { color: #4ec9b0; }
+body.vscode-high-contrast .hljs-attr { color: #9cdcfe; }
+body.vscode-high-contrast .hljs-attribute { color: #9cdcfe; }
+body.vscode-high-contrast .hljs-regexp { color: #d16969; }
+body.vscode-high-contrast .hljs-meta { color: #569cd6; }
+body.vscode-high-contrast .hljs-meta .hljs-keyword { color: #569cd6; }
+body.vscode-high-contrast .hljs-meta .hljs-string { color: #ce9178; }
+body.vscode-high-contrast .hljs-tag { color: #808080; }
+body.vscode-high-contrast .hljs-name { color: #569cd6; }
+body.vscode-high-contrast .hljs-symbol { color: #b5cea8; }
+body.vscode-high-contrast .hljs-params { color: #9cdcfe; }
+body.vscode-high-contrast .hljs-property { color: #9cdcfe; }
+body.vscode-high-contrast .hljs-subst { color: #d4d4d4; }
+body.vscode-high-contrast .hljs-operator { color: #d4d4d4; }
+body.vscode-high-contrast .hljs-punctuation { color: #d4d4d4; }
+body.vscode-high-contrast .hljs-addition { color: #b5cea8; background: rgba(34, 74, 52, 0.3); }
+body.vscode-high-contrast .hljs-deletion { color: #ce9178; background: rgba(94, 34, 34, 0.3); }
+body.vscode-high-contrast .hljs-section { color: #569cd6; }
+body.vscode-high-contrast .hljs-emphasis { font-style: italic; }
+body.vscode-high-contrast .hljs-strong { font-weight: bold; }
+
+/* High contrast light — reuse light syntax colors */
+body.vscode-high-contrast-light .hljs-keyword,
+body.vscode-high-contrast-light .hljs-selector-tag { color: #af00db; }
+body.vscode-high-contrast-light .hljs-built_in { color: #267f99; }
+body.vscode-high-contrast-light .hljs-type,
+body.vscode-high-contrast-light .hljs-selector-class { color: #267f99; }
+body.vscode-high-contrast-light .hljs-string,
+body.vscode-high-contrast-light .hljs-selector-attr,
+body.vscode-high-contrast-light .hljs-selector-pseudo { color: #a31515; }
+body.vscode-high-contrast-light .hljs-number,
+body.vscode-high-contrast-light .hljs-literal { color: #098658; }
+body.vscode-high-contrast-light .hljs-comment,
+body.vscode-high-contrast-light .hljs-quote { color: #008000; font-style: italic; }
+body.vscode-high-contrast-light .hljs-doctag { color: #008000; }
+body.vscode-high-contrast-light .hljs-variable,
+body.vscode-high-contrast-light .hljs-template-variable { color: #001080; }
+body.vscode-high-contrast-light .hljs-title,
+body.vscode-high-contrast-light .hljs-title.function_ { color: #795e26; }
+body.vscode-high-contrast-light .hljs-title.class_ { color: #267f99; }
+body.vscode-high-contrast-light .hljs-attr { color: #001080; }
+body.vscode-high-contrast-light .hljs-attribute { color: #001080; }
+body.vscode-high-contrast-light .hljs-regexp { color: #811f3f; }
+body.vscode-high-contrast-light .hljs-meta { color: #0000ff; }
+body.vscode-high-contrast-light .hljs-meta .hljs-keyword { color: #0000ff; }
+body.vscode-high-contrast-light .hljs-meta .hljs-string { color: #a31515; }
+body.vscode-high-contrast-light .hljs-tag { color: #800000; }
+body.vscode-high-contrast-light .hljs-name { color: #0000ff; }
+body.vscode-high-contrast-light .hljs-symbol { color: #098658; }
+body.vscode-high-contrast-light .hljs-params { color: #001080; }
+body.vscode-high-contrast-light .hljs-property { color: #001080; }
+body.vscode-high-contrast-light .hljs-subst { color: #000000; }
+body.vscode-high-contrast-light .hljs-operator { color: #000000; }
+body.vscode-high-contrast-light .hljs-punctuation { color: #000000; }
+body.vscode-high-contrast-light .hljs-addition { color: #098658; background: rgba(34, 139, 34, 0.1); }
+body.vscode-high-contrast-light .hljs-deletion { color: #a31515; background: rgba(255, 0, 0, 0.1); }
+body.vscode-high-contrast-light .hljs-section { color: #0000ff; }
+body.vscode-high-contrast-light .hljs-emphasis { font-style: italic; }
+body.vscode-high-contrast-light .hljs-strong { font-weight: bold; }
+
+/* High contrast — enhanced borders for accessibility */
+body.vscode-high-contrast .modal,
+body.vscode-high-contrast-light .modal {
+	border-color: var(--vscode-contrastBorder);
+}
+
+body.vscode-high-contrast .toolbar-button,
+body.vscode-high-contrast-light .toolbar-button {
+	border-color: var(--vscode-contrastBorder);
+}
+
+body.vscode-high-contrast .result.is-selected,
+body.vscode-high-contrast-light .result.is-selected {
+	border-color: var(--vscode-contrastBorder);
+	outline: 1px solid var(--vscode-contrastActiveBorder, var(--vscode-focusBorder));
+}
+
+body.vscode-high-contrast mark,
+body.vscode-high-contrast-light mark {
+	border: 1px solid var(--vscode-contrastBorder);
+}
 
 .image-preview {
 	display: flex;
@@ -336,7 +475,7 @@ mark * {
 	height: 100%;
 	display: grid;
 	place-items: center;
-	color: #8d8d8d;
+	color: var(--vscode-descriptionForeground, #8d8d8d);
 	font-size: 13px;
 	text-align: center;
 	padding: 24px;
