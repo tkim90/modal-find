@@ -18,10 +18,13 @@ export function activate(context: vscode.ExtensionContext): void {
 	}
 
 	const openCommand = vscode.commands.registerCommand('fast-fuzzy-finder.open', () => {
+		const editor = vscode.window.activeTextEditor;
+		const selectedText = editor ? editor.document.getText(editor.selection) : '';
 		traceLifecycle('command.invoked', {
-			command: 'fast-fuzzy-finder.open'
+			command: 'fast-fuzzy-finder.open',
+			hasSelection: Boolean(selectedText)
 		});
-		ModalFindPanel.createOrShow(context, searchService);
+		ModalFindPanel.createOrShow(context, searchService, selectedText || undefined);
 	});
 
 	context.subscriptions.push(searchService, openCommand, { dispose: disposeDebugResources });

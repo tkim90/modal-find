@@ -35,7 +35,7 @@ interface SerializedResult {
 }
 
 type ExtensionMessage =
-	| { type: 'focusQuery' }
+	| { type: 'focusQuery'; query?: string }
 	| { type: 'searching'; query: string }
 	| { type: 'idle'; metaMessage?: string; statusMessage?: string }
 	| {

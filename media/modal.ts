@@ -844,6 +844,10 @@
 		const message = event.data;
 		switch (message.type) {
 			case 'focusQuery':
+				if (message.query) {
+					queryInput.value = message.query;
+					postQuery(message.query);
+				}
 				queryInput.focus();
 				queryInput.select();
 				return;
