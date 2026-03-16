@@ -71,7 +71,7 @@ body {
 .input-actions {
 	display: flex;
 	align-items: center;
-	gap: 0;
+	gap: 2px;
 }
 
 .query {
@@ -99,9 +99,9 @@ body {
 
 .filter-input {
 	width: 100%;
-	border: 1px solid #313131;
-	background: #111111;
-	color: #f2f2f2;
+	border: 1px solid var(--vscode-input-border, #313131);
+	background: var(--vscode-input-background, var(--vscode-editor-background, #111111));
+	color: var(--vscode-input-foreground, #f2f2f2);
 	padding: 7px 10px;
 	border-radius: 0;
 	font-size: 13px;
@@ -116,7 +116,7 @@ body {
 .toolbar-button {
 	width: 42px;
 	height: 42px;
-	border: 1px solid var(--vscode-widget-border, #3a3a3a);
+	border: none;
 	border-radius: 0;
 	background: var(--vscode-editor-background, #111111);
 	color: var(--vscode-descriptionForeground, #9f9f9f);
@@ -134,14 +134,12 @@ body {
 
 .toolbar-button.is-active {
 	background: var(--vscode-button-background, #202734);
-	border-color: var(--vscode-button-background, #4b6a96);
 	color: var(--vscode-button-foreground, #d7e7ff);
 }
 
 .toolbar-button:focus-visible {
 	outline: none;
 	box-shadow: 0 0 0 1px var(--vscode-focusBorder);
-	border-color: var(--vscode-focusBorder);
 }
 
 .results {

@@ -40,8 +40,11 @@ export function activate(context: vscode.ExtensionContext): void {
 	const toggleRegexCommand = vscode.commands.registerCommand('fast-fuzzy-finder.toggleRegex', () => {
 		ModalFindPanel.toggleSearchOption('regexEnabled');
 	});
+	const toggleFilterCommand = vscode.commands.registerCommand('fast-fuzzy-finder.toggleFilter', () => {
+		ModalFindPanel.toggleSearchOption('filter');
+	});
 
-	context.subscriptions.push(searchService, openCommand, toggleCaseCommand, toggleWordCommand, toggleRegexCommand, { dispose: disposeDebugResources });
+	context.subscriptions.push(searchService, openCommand, toggleCaseCommand, toggleWordCommand, toggleRegexCommand, toggleFilterCommand, { dispose: disposeDebugResources });
 	traceLifecycle('extension.activate.end');
 }
 

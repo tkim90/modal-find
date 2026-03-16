@@ -37,6 +37,10 @@
       {
         "command": "fast-fuzzy-finder.toggleRegex",
         "title": "Fast Fuzzy Finder: Toggle Regex"
+      },
+      {
+        "command": "fast-fuzzy-finder.toggleFilter",
+        "title": "Fast Fuzzy Finder: Toggle Filter"
       }
     ],
     "keybindings": [
@@ -59,6 +63,11 @@
         "command": "fast-fuzzy-finder.toggleRegex",
         "key": "ctrl+alt+r",
         "mac": "alt+cmd+r"
+      },
+      {
+        "command": "fast-fuzzy-finder.toggleFilter",
+        "key": "ctrl+alt+f",
+        "mac": "alt+cmd+f"
       }
     ],
     "configuration": {
